@@ -41,3 +41,18 @@ class WandbOfflineCheckpointCallback(Callback):
             # Policy="now" ensures it's copied to wandb directory immediately (if offline)
             # or uploaded (if online)
             logger.experiment.save(ckpt, base_path=os.path.dirname(dirpath), policy="now")
+
+        # Cleanup broken symlinks in the wandb directory
+        # This is necessary because if a checkpoint is deleted by ModelCheckpoint (e.g. save_top_k),
+        # the symlink in the wandb directory remains but points to a non-existent file.
+        # This causes 'wandb sync' to fail.
+        wandb_dir = logger.experiment.dir
+        # Assuming base_path was os.path.dirname(dirpath) -> 'checkpoints' is the subdir
+        wandb_ckpt_dir = os.path.join(wandb_dir, "checkpoints")
+        
+        if os.path.exists(wandb_ckpt_dir):
+            for filename in os.listdir(wandb_ckpt_dir):
+                filepath = os.path.join(wandb_ckpt_dir, filename)
+                # Check if it is a broken link
+                if os.path.islink(filepath) and not os.path.exists(filepath):
+                    os.remove(filepath)
