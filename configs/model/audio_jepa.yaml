@@ -1,0 +1,63 @@
+_target_: src.models.audio_jepa_module.AudioJEPAModule
+
+optimizer:
+  _target_: torch.optim.AdamW
+  _partial_: true
+  lr: 1e-4
+  weight_decay: 0.05
+
+warmup_pct: 0.05
+
+ema_decay: 0.996
+ema_end_decay: 1.0
+ema_anneal_end_step: null # computed automatically
+
+spectrogram_adjustment_mode: truncate
+
+net:
+  spectrogram:
+    sample_rate: ${data.target_sample_rate}
+    n_fft: 2048
+    # win_length: 2048
+    # hop_length: 625
+    win_length_ms: 128 # 2048 / 16000 * 1000 = 128ms
+    hop_length_ms: 39.0625 # 625 / 16000 * 1000 = 39.0625ms
+    n_mels: 128
+    f_min: 0
+    f_max: 8000
+    power: 2.0
+  
+  patch_embed:
+    img_size: [128, 256]
+    patch_size: [16, 16]
+    in_chans: 1
+    embed_dim: 768
+  
+  masking:
+    input_size: [128, 256]
+    patch_size: [16, 16]
+    mask_ratio: [0.4, 0.6]
+  
+  encoder:
+    embed_dim: 768
+    depth: 12
+    num_heads: 12
+    mlp_ratio: 4.0
+    qkv_bias: true
+    drop_rate: 0.0
+    attn_drop_rate: 0.0
+    drop_path_rate: 0.1
+    num_patches: 128 # (128/16) * (256/16) = 8 * 16 = 128
+    pos_embed_type: "sincos" # "rope", "sincos", "learnable"
+  
+  predictor:
+    embed_dim: 768
+    depth: 4 # Usually smaller than encoder
+    num_heads: 12
+    mlp_ratio: 4.0
+    qkv_bias: true
+    drop_rate: 0.0
+    attn_drop_rate: 0.0
+    drop_path_rate: 0.0
+    num_patches: 128
+    pos_embed_type: "sincos"

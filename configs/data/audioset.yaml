@@ -1,0 +1,12 @@
+_target_: src.data.audioset_datamodule.AudioSetDataModule
+data_dir: ${paths.data_dir}/AudioSet
+batch_size: 64
+num_workers: 4
+pin_memory: True
+train_h5: full_unbal_bal_train_wav.h5
+train_csv: silent_files_full_unbal_bal_train_wav.csv
+val_h5: eval_soxrhq.h5
+val_csv: silent_files_eval_soxrhq.csv
+max_audio_length_sec: 10.0 # 10 seconds
+target_sample_rate: 16000
+collate_mode: pad

@@ -1,0 +1,29 @@
+defaults:
+  - model_checkpoint
+  - model_summary
+  - rich_progress_bar
+  - _self_
+
+model_checkpoint:
+  dirpath: ${paths.output_dir}/checkpoints
+  filename: "best-step-{step:06d}"
+  monitor: "val/loss"
+  mode: "min"
+  save_last: True
+  save_weights_only: True
+  auto_insert_metric_name: False
+
+# early_stopping:
+#   monitor: "val/loss"
+#   patience: 100
+#   mode: "min"
+
+model_summary:
+  max_depth: 1
+
+device_stats:
+  _target_: lightning.pytorch.callbacks.DeviceStatsMonitor
+
+visualization:
+  _target_: src.callbacks.visualization_callback.VisualizationCallback
+  num_samples: 4
