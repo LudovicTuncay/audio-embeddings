@@ -23,7 +23,7 @@ data:
 
 logger:
   wandb:
-    name: "jepaaudioset-baseline-200k-128x4bs"
+    name: "jepa-audioset-baseline-200k-128x4bs"
     offline: True
     log_model: False
 
