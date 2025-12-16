@@ -34,13 +34,15 @@ class AudioJEPAModule(L.LightningModule):
         ema_end_decay: float = 1.0,
         ema_anneal_end_step: Optional[int] = None,
         spectrogram_adjustment_mode: str = "pad",
+        criterion: Optional[torch.nn.Module] = None,
     ):
         super().__init__()
-        self.save_hyperparameters(logger=False)
+        self.save_hyperparameters(logger=False, ignore=["criterion"])
         
         self.warmup_pct = warmup_pct
         self.final_lr_ratio = final_lr_ratio
         self.spectrogram_adjustment_mode = spectrogram_adjustment_mode
+        self.criterion = criterion if criterion is not None else nn.MSELoss()
         
         # Components
         self.spectrogram = Spectrogram(**net.get("spectrogram", {}))
@@ -256,7 +258,7 @@ class AudioJEPAModule(L.LightningModule):
         teacher_targets = teacher_full[:, mask_indices, :]
         
         # Loss
-        loss = F.mse_loss(predictions, teacher_targets)
+        loss = self.criterion(predictions, teacher_targets)
         
         self.log("train/loss", loss, on_step=True, on_epoch=True, prog_bar=True, batch_size=B)
         return loss
@@ -331,7 +333,7 @@ class AudioJEPAModule(L.LightningModule):
             predictions = self.predictor_output_proj(predictions)
             teacher_targets = teacher_full[i, mask_indices, :]
             
-            loss = F.mse_loss(predictions, teacher_targets)
+            loss = self.criterion(predictions, teacher_targets)
             total_loss += loss
             
         avg_loss = total_loss / B

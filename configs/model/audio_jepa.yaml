@@ -14,6 +14,11 @@ ema_anneal_end_step: null # computed automatically
 
 spectrogram_adjustment_mode: truncate
 
+
+criterion:
+  _target_: torch.nn.MSELoss
+  reduction: mean
+
 net:
   spectrogram:
     sample_rate: ${data.target_sample_rate}
