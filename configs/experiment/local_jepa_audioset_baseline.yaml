@@ -1,0 +1,32 @@
+# @package _global_
+
+# to execute this experiment run:
+# python train.py experiment=audioset_baseline
+
+defaults:
+  - override /data: audioset
+  - override /model: audio_jepa
+  - override /trainer: gpu
+  - override /logger: wandb
+
+# all parameters below will be merged with parameters from default configurations set above
+# this allows you to overwrite only specified parameters
+
+tags: ["audioset", "jepa", "baseline", "local GPU"]
+
+trainer:
+  devices: 1
+  max_steps: 200000
+
+data:
+  batch_size: 128
+
+logger:
+  wandb:
+    name: "local-audioset-baseline-128x1bs"
+    offline: False
+    log_model: True
+
+callbacks:
+  model_checkpoint:
+    save_weights_only: True
