@@ -161,79 +161,22 @@ class AudioJEPAModule(L.LightningModule):
         
         return patches, grid_size
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def compute_student(self, patches: torch.Tensor, mask: torch.Tensor, grid_size: Tuple[int, int]) -> torch.Tensor:
         """
-        Forward pass for inference/eval. Returns student representation.
-        """
-        patches, grid_size = self._process_audio(x)
-        x = self.student(patches, grid_size=grid_size)
-        return x
+        Computes the student output for unmasked patches.
 
-    def training_step(self, batch: Dict[str, Any], batch_idx: int) -> torch.Tensor:
-        waveform = batch["waveform"] # [B, 1, T]
-        
-        patches, current_grid_size = self._process_audio(waveform)
-        B, N, D = patches.shape
-        
-        # Generate shared mask for the batch: [1, N] -> [B, N]
-        mask = self.mask_generator(1, device=self.device, grid_size=current_grid_size)
-        mask = mask.expand(B, -1)
-        
-        # Update teacher EMA
-        self._update_teacher()
-        
-        # Teacher forward (full)
-        with torch.no_grad():
-            teacher_full = self.teacher(patches, grid_size=current_grid_size) # [B, N, D]
-        
-        # Calculate Loss
-        loss = self._calculate_jepa_loss(patches, teacher_full, mask, current_grid_size)
-        
-        self.log("train/loss", loss, on_step=True, on_epoch=True, prog_bar=True, batch_size=B)
-        return loss
+        Args:
+            patches: [B, N, D]
+            mask: [B, N]
+            grid_size: (H, W)
 
-    def validation_step(self, batch: Dict[str, Any], batch_idx: int) -> torch.Tensor:
-        waveform = batch["waveform"]
-        
-        patches, current_grid_size = self._process_audio(waveform)
-        B, N, D = patches.shape
-        
-        # Shared mask for validation as well to enable vectorization
-        mask = self.mask_generator(1, device=self.device, grid_size=current_grid_size)
-        mask = mask.expand(B, -1)
-        
-        # Teacher forward (full)
-        with torch.no_grad():
-            teacher_full = self.teacher(patches, grid_size=current_grid_size)
-            
-            # Calculate Loss
-            loss = self._calculate_jepa_loss(patches, teacher_full, mask, current_grid_size)
-        
-        self.log("val/loss", loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=B)
-        return loss
-
-    def test_step(self, batch: Dict[str, Any], batch_idx: int) -> torch.Tensor:
-        return self.validation_step(batch, batch_idx)
-
-    def _calculate_jepa_loss(
-        self, 
-        patches: torch.Tensor, 
-        teacher_full: torch.Tensor, 
-        mask: torch.Tensor, 
-        grid_size: Tuple[int, int]
-    ) -> torch.Tensor:
-        """
-        Shared JEPA loss calculation logic.
+        Returns:
+            student_out: [B, N_keep, D]
         """
         B, N, _ = patches.shape
         
-        # Vectorized processing using shared mask
-        # mask is [B, N], but identical across B.
         m = mask[0] # [N]
         keep_indices = torch.nonzero(~m).flatten() # [N_keep]
-        mask_indices = torch.nonzero(m).flatten() # [N_mask]
-        
-        num_mask = len(mask_indices)
         
         # Student input (Context)
         context_patches = patches[:, keep_indices, :] # [B, N_keep, D]
@@ -247,6 +190,29 @@ class AudioJEPAModule(L.LightningModule):
             pos_ids=context_pos_ids,
             grid_size=grid_size
         ) # [B, N_keep, D]
+        
+        return student_out
+
+    def compute_predictor(self, student_out: torch.Tensor, mask: torch.Tensor, grid_size: Tuple[int, int]) -> torch.Tensor:
+        """
+        Computes the predictor output at masked locations.
+
+        Args:
+            student_out: [B, N_keep, D]
+            mask: [B, N]
+            grid_size: (H, W)
+
+        Returns:
+            predictions_raw: [B, N_mask, pred_dim]
+        """
+        B, N_keep, _ = student_out.shape
+        # Note: B derived from student_out might be different if batch size changes, but it shouldn't here.
+        # N is implicit in mask.
+        
+        m = mask[0] # [N]
+        keep_indices = torch.nonzero(~m).flatten() # [N_keep]
+        mask_indices = torch.nonzero(m).flatten() # [N_mask]
+        num_mask = len(mask_indices)
         
         # Predictor Input Construction
         student_out_proj = self.predictor_input_proj(student_out) # [B, N_keep, pred_dim]
@@ -276,11 +242,94 @@ class AudioJEPAModule(L.LightningModule):
         else:
             pred_out = self.predictor(pred_input, add_pos_embed=False)
             
-        # Predictions at mask locations
-        predictions = pred_out[:, mask_indices, :] # [B, N_mask, pred_dim]
+        # Predictions at mask locations (returns raw embeddings in pred_dim)
+        predictions_raw = pred_out[:, mask_indices, :] # [B, N_mask, pred_dim]
+        
+        return predictions_raw
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass for inference/eval. Returns student representation.
+        """
+        patches, grid_size = self._process_audio(x)
+        x = self.student(patches, grid_size=grid_size)
+        return x
+
+    def training_step(self, batch: Dict[str, Any], batch_idx: int) -> torch.Tensor:
+        waveform = batch["waveform"] # [B, 1, T]
+        
+        patches, current_grid_size = self._process_audio(waveform)
+        B, N, D = patches.shape
+        
+        # Generate shared mask for the batch: [1, N] -> [B, N]
+        mask = self.mask_generator(1, device=self.device, grid_size=current_grid_size)
+        mask = mask.expand(B, -1)
+        
+        # Update teacher EMA
+        self._update_teacher()
+        
+        # Compute Student
+        student_out = self.compute_student(patches, mask, current_grid_size)
+        
+        # Compute Predictor
+        predictions_raw = self.compute_predictor(student_out, mask, current_grid_size)
+        
+        # Teacher forward (full)
+        with torch.no_grad():
+            teacher_full = self.teacher(patches, grid_size=current_grid_size) # [B, N, D]
+        
+        # Calculate Loss
+        loss = self._calculate_jepa_loss(student_out, predictions_raw, teacher_full, mask, current_grid_size)
+        
+        self.log("train/loss", loss, on_step=True, on_epoch=True, prog_bar=True, batch_size=B)
+        return loss
+
+    def validation_step(self, batch: Dict[str, Any], batch_idx: int) -> torch.Tensor:
+        waveform = batch["waveform"]
+        
+        patches, current_grid_size = self._process_audio(waveform)
+        B, N, D = patches.shape
+        
+        # Shared mask for validation as well to enable vectorization
+        mask = self.mask_generator(1, device=self.device, grid_size=current_grid_size)
+        mask = mask.expand(B, -1)
+        
+        # Compute Student
+        student_out = self.compute_student(patches, mask, current_grid_size)
+        
+        # Compute Predictor
+        predictions_raw = self.compute_predictor(student_out, mask, current_grid_size)
+        
+        # Teacher forward (full)
+        with torch.no_grad():
+            teacher_full = self.teacher(patches, grid_size=current_grid_size)
+            
+            # Calculate Loss
+            loss = self._calculate_jepa_loss(student_out, predictions_raw, teacher_full, mask, current_grid_size)
+        
+        self.log("val/loss", loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=B)
+        return loss
+
+    def test_step(self, batch: Dict[str, Any], batch_idx: int) -> torch.Tensor:
+        return self.validation_step(batch, batch_idx)
+
+    def _calculate_jepa_loss(
+        self, 
+        student_out: torch.Tensor,
+        predictions_raw: torch.Tensor, 
+        teacher_full: torch.Tensor, 
+        mask: torch.Tensor, 
+        grid_size: Tuple[int, int]
+    ) -> torch.Tensor:
+        """
+        Shared JEPA loss calculation logic.
+        """
+        B = predictions_raw.shape[0]
+        m = mask[0]
+        mask_indices = torch.nonzero(m).flatten()
         
         # Project back to encoder dimension
-        predictions = self.predictor_output_proj(predictions) # [B, N_mask, encoder_dim]
+        predictions = self.predictor_output_proj(predictions_raw) # [B, N_mask, encoder_dim]
         
         # Targets
         teacher_targets = teacher_full[:, mask_indices, :] # [B, N_mask, encoder_dim]
