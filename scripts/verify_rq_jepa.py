@@ -1,6 +1,5 @@
 import torch
-import hydra
-from omegaconf import OmegaConf
+import torch.nn as nn
 import sys
 import os
 
@@ -20,36 +19,57 @@ def verify_rq_jepa():
         "encoder": {"img_size": (1024, 128), "patch_size": (16, 16), "embed_dim": 768, "depth": 2, "num_heads": 4},
         "predictor": {"img_size": (1024, 128), "patch_size": (16, 16), "embed_dim": 384, "depth": 1, "num_heads": 4}
     }
+    
+    # Mock Optimizer
+    optimizer_partial = lambda params: torch.optim.Adam(params)
 
-    # Instantiate Module
-    model = RQJEPAModule(
-        optimizer=lambda params: torch.optim.Adam(params),
+    # --- Mode 1: Teacher Input ---
+    print("\n--- Verifying RQ-JEPA (Mode: teacher) ---")
+    model_teacher = RQJEPAModule(
+        optimizer=optimizer_partial,
         net=net_config,
-        rq_lambda=0.5,
+        jepa_criterion=nn.MSELoss(),
+        rq_criterion=nn.CrossEntropyLoss(),
+        rq_input_type="teacher",
         codebook_dim=16,
-        vocab_size=100, # Small vocab for test
-        jepa_criterion=torch.nn.MSELoss(),
-        rq_criterion=torch.nn.CrossEntropyLoss()
+        vocab_size=100
     )
-    
-    # Mock Batch
-    B = 2
-    T = 16000 * 2 # 2 seconds
-    waveform = torch.randn(B, 1, T)
+
+    # Mock input data
+    B, C, T = 2, 1, 16000 # 1 second audio
+    waveform = torch.rand(B, C, T)
     batch = {"waveform": waveform}
-    
-    print("Model instantiated. Running training_step...")
-    
-    # Run training step
-    loss = model.training_step(batch, batch_idx=0)
-    
-    print(f"Training step successful. Loss: {loss.item()}")
-    
-    # Check if sub-losses are computed (by inspecting if code ran without error and returned scalar)
-    assert isinstance(loss, torch.Tensor)
-    assert loss.ndim == 0
-    
-    print("Verification Passed!")
+
+    # Set device
+    model_teacher.to("cpu")
+
+    # Run training_step
+    print("Model (teacher) instantiated. Running training_step...")
+    loss_teacher = model_teacher.training_step(batch, 0)
+    print(f"Training step successful. Loss: {loss_teacher.item()}")
+    assert isinstance(loss_teacher, torch.Tensor)
+    assert loss_teacher.ndim == 0
+
+    # --- Mode 2: Spectrogram Input ---
+    print("\n--- Verifying RQ-JEPA (Mode: spectrogram) ---")
+    model_spec = RQJEPAModule(
+        optimizer=optimizer_partial,
+        net=net_config,
+        jepa_criterion=nn.MSELoss(),
+        rq_criterion=nn.CrossEntropyLoss(),
+        rq_input_type="spectrogram",
+        codebook_dim=16,
+        vocab_size=100
+    )
+    model_spec.to("cpu")
+
+    print("Model (spectrogram) instantiated. Running training_step...")
+    loss_spec = model_spec.training_step(batch, 0)
+    print(f"Training step successful. Loss: {loss_spec.item()}")
+    assert isinstance(loss_spec, torch.Tensor)
+    assert loss_spec.ndim == 0
+
+    print("\nVerification Passed!")
 
 if __name__ == "__main__":
     verify_rq_jepa()

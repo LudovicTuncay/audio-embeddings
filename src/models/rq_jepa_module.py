@@ -26,6 +26,7 @@ class RQJEPAModule(AudioJEPAModule):
         rq_lambda (float): Weight for JEPA loss (1 - rq_lambda is used for RQ loss).
         codebook_dim (int): Codebook dimension for RandomProjectionQuantizer.
         vocab_size (int): Vocabulary size for RandomProjectionQuantizer.
+        rq_input_type (str): 'teacher' or 'spectrogram'. Source for quantization targets.
     """
     def __init__(
         self,
@@ -42,6 +43,7 @@ class RQJEPAModule(AudioJEPAModule):
         rq_lambda: float = 0.5,
         codebook_dim: int = 16,
         vocab_size: int = 8192,
+        rq_input_type: str = "teacher",
     ):
         super().__init__(
             optimizer=optimizer,
@@ -60,11 +62,25 @@ class RQJEPAModule(AudioJEPAModule):
         # Store rq_criterion separately
         self.rq_criterion = rq_criterion if rq_criterion is not None else nn.CrossEntropyLoss()
         
+        self.rq_input_type = rq_input_type
+        if self.rq_input_type not in ["teacher", "spectrogram"]:
+            raise ValueError(f"rq_input_type must be 'teacher' or 'spectrogram', got {self.rq_input_type}")
+
         # Random Projection Quantizer
-        # Input to quantizer is teacher output which has encoder_dim
-        encoder_dim = net.get("encoder", {}).get("embed_dim", 768)
+        # Determine input dimension for quantizer
+        if self.rq_input_type == "teacher":
+            # Input to quantizer is teacher output which has encoder_dim
+            quantizer_input_dim = net.get("encoder", {}).get("embed_dim", 768)
+        else: # spectrogram
+             # Input is raw patches
+             # patch_embed is locally available on self
+             # However, patch_size is stored in self.patch_embed.patch_embed.patch_size
+             patch_size = self.patch_embed.patch_embed.patch_size
+             in_chans = self.patch_embed.patch_embed.in_chans
+             quantizer_input_dim = patch_size[0] * patch_size[1] * in_chans
+
         self.quantizer = RandomProjectionQuantizer(
-            input_dim=encoder_dim,
+            input_dim=quantizer_input_dim,
             cb_dim=codebook_dim,
             cb_vocab=vocab_size
         )
@@ -107,6 +123,46 @@ class RQJEPAModule(AudioJEPAModule):
         
         return total_loss, jepa_loss, rq_loss
 
+    def _get_raw_patches(self, spec: torch.Tensor) -> torch.Tensor:
+        """
+        Extract raw key-value patches from spectrogram.
+        
+        Args:
+             spec (torch.Tensor): Adjusted spectrogram [B, C, F, T].
+             
+        Returns:
+             torch.Tensor: Flattened patches [B, N, patch_dim]
+        """
+        patch_size = self.patch_embed.patch_embed.patch_size # (H, W)
+        
+        # Using kernel_size=patch_size, stride=patch_size ensures non-overlapping patches
+        # F.unfold returns [B, C*pH*pW, L]
+        patches = F.unfold(spec, kernel_size=patch_size, stride=patch_size) # [B, D, N]
+        patches = patches.transpose(1, 2) # [B, N, D]
+        
+        return patches
+
+    def _get_rq_targets_input(
+        self, 
+        spec: torch.Tensor, 
+        teacher_full: torch.Tensor, 
+        mask_indices: torch.Tensor
+    ) -> torch.Tensor:
+        """
+        Helper to get the input for the RQ quantizer (either teacher embeddings or raw patches).
+        Only returns the targets for the MASKED locations.
+        """
+        if self.rq_input_type == "teacher":
+             # Teacher targets at masked locations
+            return teacher_full[:, mask_indices, :] # [B, N_mask, encoder_dim]
+        else:
+            # Raw patches at masked locations
+            # Check if spec is None, which implies logic error in caller
+            if spec is None:
+                raise ValueError("Spectrogram cannot be None when rq_input_type is 'spectrogram'")
+            raw_patches = self._get_raw_patches(spec) # [B, N, patch_dim]
+            return raw_patches[:, mask_indices, :] # [B, N_mask, patch_dim]
+
     def training_step(self, batch: Dict[str, Any], batch_idx: int) -> torch.Tensor:
         waveform = batch["waveform"]
         
@@ -128,12 +184,20 @@ class RQJEPAModule(AudioJEPAModule):
         m = mask[0]
         mask_indices = torch.nonzero(m).flatten()
         
-        # Teacher targets at masked locations
+        # Teacher targets always needed for JEPA loss
         teacher_targets = teacher_full[:, mask_indices, :] # [B, N_mask, encoder_dim]
 
         # RQ Targets (Quantized)
         with torch.no_grad():
-            rq_targets = self.quantizer(teacher_targets) # [B, N_mask]
+            # Need spec for 'spectrogram' mode
+            spec = None
+            if self.rq_input_type == "spectrogram":
+                # Re-compute spectrogram as we don't have it exposed from _process_audio
+                spec = self.spectrogram(waveform)
+                spec = self._adjust_spectrogram(spec)
+                
+            rq_targets_input = self._get_rq_targets_input(spec, teacher_full, mask_indices)
+            rq_targets = self.quantizer(rq_targets_input) # [B, N_mask]
 
         # RQ Logits
         rq_logits = self.rq_proj(predictions_raw) # [B, N_mask, vocab_size]
@@ -168,7 +232,13 @@ class RQJEPAModule(AudioJEPAModule):
             teacher_targets = teacher_full[:, mask_indices, :] # [B, N_mask, encoder_dim]
 
             # RQ Targets (Quantized)
-            rq_targets = self.quantizer(teacher_targets) # [B, N_mask]
+            spec = None
+            if self.rq_input_type == "spectrogram":
+                spec = self.spectrogram(waveform)
+                spec = self._adjust_spectrogram(spec)
+                
+            rq_targets_input = self._get_rq_targets_input(spec, teacher_full, mask_indices)
+            rq_targets = self.quantizer(rq_targets_input) # [B, N_mask]
             
             # RQ Logits
             rq_logits = self.rq_proj(predictions_raw) # [B, N_mask, vocab_size]
