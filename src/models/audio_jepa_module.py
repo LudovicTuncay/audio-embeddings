@@ -23,6 +23,8 @@ class AudioJEPAModule(L.LightningModule):
         ema_decay (float): Initial EMA decay rate.
         ema_end_decay (float): Final EMA decay rate.
         ema_anneal_end_step (int): Step at which EMA decay reaches ema_end_decay.
+        spectrogram_adjustment_mode (str): 'pad' or 'truncate' for spectrogram time dimension.
+        criterion (torch.nn.Module): Loss function (defaults to MSELoss).
     """
     def __init__(
         self,
@@ -56,7 +58,7 @@ class AudioJEPAModule(L.LightningModule):
         self.teacher = ViT(**net.get("encoder", {}))
         # Initialize teacher with student weights
         self.teacher.load_state_dict(self.student.state_dict())
-        # Freeze teacher
+        # stop gradient (teacher will be updated by EMA)
         for p in self.teacher.parameters():
             p.requires_grad = False
             
@@ -72,7 +74,6 @@ class AudioJEPAModule(L.LightningModule):
         self.predictor_output_proj = nn.Linear(predictor_embed_dim, encoder_dim)
         
         # Mask Token
-        # Mask token should match predictor dim
         self.mask_token = nn.Parameter(torch.zeros(1, 1, predictor_embed_dim))
         nn.init.trunc_normal_(self.mask_token, std=0.02)
         
@@ -85,24 +86,19 @@ class AudioJEPAModule(L.LightningModule):
     def setup(self, stage: Optional[str] = None) -> None:
         # Calculate ema_anneal_end_step if not provided
         if self.ema_anneal_end_step is None:
-            if self.trainer.max_steps and self.trainer.max_steps > 0:
-                self.ema_anneal_end_step = self.trainer.max_steps
-            else:
-                self.ema_anneal_end_step = self.trainer.estimated_stepping_batches
+            self.ema_anneal_end_step = getattr(self.trainer, "max_steps", 0)
+            if self.ema_anneal_end_step <= 0:
+                self.ema_anneal_end_step = getattr(self.trainer, "estimated_stepping_batches", 100000)
             
-            # If still None or 0 (unlikely if trainer is set up correctly), default to something safe or warn
-            if self.ema_anneal_end_step is None or self.ema_anneal_end_step <= 0:
-                # Fallback to a large number to effectively disable annealing or just keep constant
-                # But better to warn.
+            if self.ema_anneal_end_step <= 0:
                 print("Warning: Could not determine total steps for EMA annealing. Using 100000 as default.")
                 self.ema_anneal_end_step = 100000
         
     def on_train_batch_start(self, batch: Any, batch_idx: int) -> None:
-        # Update EMA decay: Linear schedule from start_decay to end_decay
+        # Update EMA decay
         step = self.global_step
-        decay = self.ema_end_decay - (self.ema_end_decay - self.ema_decay) * (
-            (self.ema_anneal_end_step - step) / self.ema_anneal_end_step
-        )
+        progress = (self.ema_anneal_end_step - step) / self.ema_anneal_end_step
+        decay = self.ema_end_decay - (self.ema_end_decay - self.ema_decay) * progress
         decay = min(self.ema_end_decay, max(self.ema_decay, decay))
         self.current_ema_decay = decay
         
@@ -122,7 +118,6 @@ class AudioJEPAModule(L.LightningModule):
         Returns:
             torch.Tensor: Adjusted spectrogram.
         """
-        # Get patch size from PatchEmbed component
         # PatchEmbed stores patch_size as (H, W) corresponding to (F, T)
         patch_size = self.patch_embed.patch_embed.patch_size
         patch_time_dim = patch_size[1]
@@ -135,130 +130,64 @@ class AudioJEPAModule(L.LightningModule):
                 pad_amount = patch_time_dim - remainder
                 spec = F.pad(spec, (0, pad_amount))
             elif self.spectrogram_adjustment_mode == "truncate":
-                # Truncate the extra frames
                 spec = spec[..., :T - remainder]
             else:
                 raise ValueError(f"Unknown spectrogram_adjustment_mode: {self.spectrogram_adjustment_mode}")
             
         return spec
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def _process_audio(self, waveform: torch.Tensor) -> Tuple[torch.Tensor, Tuple[int, int]]:
         """
-        Forward pass for inference/eval. Returns student representation.
-        """
-        x = self.spectrogram(x)
-        x = self._adjust_spectrogram(x)
-        x = self.patch_embed(x)
-        x = self.student(x)
-        return x
-
-    def training_step(self, batch: Dict[str, Any], batch_idx: int) -> torch.Tensor:
-        waveform = batch["waveform"] # [B, 1, T]
+        Processes raw waveform into patches and returns patches and grid size.
         
+        Returns:
+            patches: [B, N, D]
+            grid_size: (H, W)
+        """
         # 1. Spectrogram
         spec = self.spectrogram(waveform) # [B, 1, F, T]
         spec = self._adjust_spectrogram(spec)
         
         # 2. Patchify
         patches = self.patch_embed(spec) # [B, N, D]
-        B, N, D = patches.shape
         
-        # Calculate grid size for this batch
+        # Calculate grid size
         patch_size = self.patch_embed.patch_embed.patch_size
         F_pix = spec.shape[2]
         T_pix = spec.shape[3]
         H_grid = F_pix // patch_size[0]
         W_grid = T_pix // patch_size[1]
-        current_grid_size = (H_grid, W_grid)
+        grid_size = (H_grid, W_grid)
         
-        # 3. Masking
-        # Generate ONE mask for the batch: [1, N]
-        # We share the mask across the batch to enable vectorization
-        mask = self.mask_generator(1, device=self.device, grid_size=current_grid_size) # [1, N]
-        mask = mask.expand(B, -1) # [B, N]
+        return patches, grid_size
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass for inference/eval. Returns student representation.
+        """
+        patches, grid_size = self._process_audio(x)
+        x = self.student(patches, grid_size=grid_size)
+        return x
+
+    def training_step(self, batch: Dict[str, Any], batch_idx: int) -> torch.Tensor:
+        waveform = batch["waveform"] # [B, 1, T]
+        
+        patches, current_grid_size = self._process_audio(waveform)
+        B, N, D = patches.shape
+        
+        # Generate shared mask for the batch: [1, N] -> [B, N]
+        mask = self.mask_generator(1, device=self.device, grid_size=current_grid_size)
+        mask = mask.expand(B, -1)
         
         # Update teacher EMA
         self._update_teacher()
         
-        # Teacher forward (on full image)
+        # Teacher forward (full)
         with torch.no_grad():
             teacher_full = self.teacher(patches, grid_size=current_grid_size) # [B, N, D]
         
-        # Vectorized processing
-        # Since mask is same for all B, we can just take indices from the first one
-        m = mask[0] # [N]
-        keep_indices = torch.nonzero(~m).flatten() # [N_keep]
-        mask_indices = torch.nonzero(m).flatten() # [N_mask]
-        
-        num_keep = len(keep_indices)
-        num_mask = len(mask_indices)
-        
-        # Student input (Context)
-        # patches: [B, N, D] -> select keep_indices -> [B, N_keep, D]
-        context_patches = patches[:, keep_indices, :] 
-        
-        # Context Pos Ids
-        # [N_keep] -> expand to [B, N_keep]
-        context_pos_ids = keep_indices.unsqueeze(0).expand(B, -1)
-        
-        # Student forward
-        student_out = self.student(
-            context_patches, 
-            pos_ids=context_pos_ids,
-            grid_size=current_grid_size
-        ) # [B, N_keep, D]
-        
-        # Predictor Input Construction
-        # Project student output to predictor dimension
-        # student_out: [B, N_keep, encoder_dim] -> [B, N_keep, predictor_dim]
-        student_out_proj = self.predictor_input_proj(student_out)
-
-        # Mask tokens: [1, 1, D] -> [B, N_mask, D]
-        mask_tokens = self.mask_token.expand(B, num_mask, -1)
-        
-        if self.predictor.pos_embed_type != "rope":
-            # Absolute pos embed
-            # Add pos embed to mask tokens
-            # pos_embed: [1, N, D] -> select mask_indices -> [1, N_mask, D] -> expand to [B, N_mask, D]
-            mask_pos_embed = self.predictor.pos_embed[:, mask_indices, :].expand(B, -1, -1)
-            mask_tokens = mask_tokens + mask_pos_embed
-            
-        pred_input = torch.cat([student_out_proj, mask_tokens], dim=1) # [B, N, D]
-        
-        # Reorder to original sequence order
-        all_indices = torch.cat([keep_indices, mask_indices]) # [N]
-        sort_indices = torch.argsort(all_indices) # [N]
-        pred_input = pred_input[:, sort_indices, :] # [B, N, D]
-
-        if self.predictor.pos_embed_type == "rope":
-            # Since input is now ordered 0..N, we can rely on default pos_ids (arange)
-            pred_out = self.predictor(
-                pred_input, 
-                pos_ids=None,
-                grid_size=current_grid_size
-            ) # [B, N, D]
-        else:
-            pred_out = self.predictor(pred_input, add_pos_embed=False) # [B, N, D]
-            
-        # Predictions for targets are at the mask indices
-        # pred_out is now [B, N, D] in spatial order.
-        # We gather the predictions at the mask locations.
-        # mask_indices: [N_mask]
-        # We need to gather from dimension 1.
-        # expand mask_indices to [B, N_mask, D] for gather? 
-        # Or just index since mask_indices shared?
-        # pred_out[:, mask_indices, :] works efficiently
-        predictions = pred_out[:, mask_indices, :] # [B, N_mask, predictor_dim]
-        
-        # Project back to encoder dimension to match targets
-        predictions = self.predictor_output_proj(predictions) # [B, N_mask, encoder_dim]
-        
-        # Targets from Teacher
-        # teacher_full: [B, N, D] -> select mask_indices -> [B, N_mask, D]
-        teacher_targets = teacher_full[:, mask_indices, :]
-        
-        # Loss
-        loss = self.criterion(predictions, teacher_targets)
+        # Calculate Loss
+        loss = self._calculate_jepa_loss(patches, teacher_full, mask, current_grid_size)
         
         self.log("train/loss", loss, on_step=True, on_epoch=True, prog_bar=True, batch_size=B)
         return loss
@@ -266,82 +195,97 @@ class AudioJEPAModule(L.LightningModule):
     def validation_step(self, batch: Dict[str, Any], batch_idx: int) -> torch.Tensor:
         waveform = batch["waveform"]
         
-        spec = self.spectrogram(waveform)
-        spec = self._adjust_spectrogram(spec)
-        patches = self.patch_embed(spec)
+        patches, current_grid_size = self._process_audio(waveform)
         B, N, D = patches.shape
         
-        patch_size = self.patch_embed.patch_embed.patch_size
-        F_pix = spec.shape[2]
-        T_pix = spec.shape[3]
-        H_grid = F_pix // patch_size[0]
-        W_grid = T_pix // patch_size[1]
-        current_grid_size = (H_grid, W_grid)
-        
-        mask = self.mask_generator(B, device=self.device, grid_size=current_grid_size)
-        
-        total_loss = 0.0
+        # Shared mask for validation as well to enable vectorization
+        mask = self.mask_generator(1, device=self.device, grid_size=current_grid_size)
+        mask = mask.expand(B, -1)
         
         # Teacher forward (full)
         with torch.no_grad():
             teacher_full = self.teacher(patches, grid_size=current_grid_size)
             
-        for i in range(B):
-            m = mask[i]
-            p = patches[i]
-            
-            keep_indices = torch.nonzero(~m).flatten()
-            mask_indices = torch.nonzero(m).flatten()
-            
-            context_patches = p[keep_indices]
-            context_pos_ids = keep_indices
-            
-            student_out = self.student(
-                context_patches.unsqueeze(0), 
-                pos_ids=context_pos_ids.unsqueeze(0),
-                grid_size=current_grid_size
-            ).squeeze(0)
-            
-            num_targets = len(mask_indices)
-            mask_tokens = self.mask_token.expand(1, num_targets, -1).squeeze(0)
-            
-            # Project student output
-            student_out_proj = self.predictor_input_proj(student_out)
-            
-            if self.predictor.pos_embed_type != "rope":
-                mask_pos_embed = self.predictor.pos_embed[:, mask_indices, :].squeeze(0)
-                mask_tokens = mask_tokens + mask_pos_embed
-            
-            pred_input = torch.cat([student_out_proj, mask_tokens], dim=0)
-            
-            # Reorder
-            all_indices = torch.cat([context_pos_ids, mask_indices], dim=0)
-            sort_indices = torch.argsort(all_indices)
-            pred_input = pred_input[sort_indices]
-            
-            if self.predictor.pos_embed_type == "rope":
-                pred_out = self.predictor(
-                    pred_input.unsqueeze(0), 
-                    pos_ids=None,
-                    grid_size=current_grid_size
-                ).squeeze(0)
-            else:
-                pred_out = self.predictor(pred_input.unsqueeze(0), add_pos_embed=False).squeeze(0)
-            
-            # Extract predictions at mask indices
-            predictions = pred_out[mask_indices]
-            predictions = self.predictor_output_proj(predictions)
-            teacher_targets = teacher_full[i, mask_indices, :]
-            
-            loss = self.criterion(predictions, teacher_targets)
-            total_loss += loss
-            
-        avg_loss = total_loss / B
-        self.log("val/loss", avg_loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=B)
-        return avg_loss
+            # Calculate Loss
+            loss = self._calculate_jepa_loss(patches, teacher_full, mask, current_grid_size)
+        
+        self.log("val/loss", loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=B)
+        return loss
 
     def test_step(self, batch: Dict[str, Any], batch_idx: int) -> torch.Tensor:
         return self.validation_step(batch, batch_idx)
+
+    def _calculate_jepa_loss(
+        self, 
+        patches: torch.Tensor, 
+        teacher_full: torch.Tensor, 
+        mask: torch.Tensor, 
+        grid_size: Tuple[int, int]
+    ) -> torch.Tensor:
+        """
+        Shared JEPA loss calculation logic.
+        """
+        B, N, _ = patches.shape
+        
+        # Vectorized processing using shared mask
+        # mask is [B, N], but identical across B.
+        m = mask[0] # [N]
+        keep_indices = torch.nonzero(~m).flatten() # [N_keep]
+        mask_indices = torch.nonzero(m).flatten() # [N_mask]
+        
+        num_mask = len(mask_indices)
+        
+        # Student input (Context)
+        context_patches = patches[:, keep_indices, :] # [B, N_keep, D]
+        
+        # Context Pos Ids
+        context_pos_ids = keep_indices.unsqueeze(0).expand(B, -1) # [B, N_keep]
+        
+        # Student forward
+        student_out = self.student(
+            context_patches, 
+            pos_ids=context_pos_ids,
+            grid_size=grid_size
+        ) # [B, N_keep, D]
+        
+        # Predictor Input Construction
+        student_out_proj = self.predictor_input_proj(student_out) # [B, N_keep, pred_dim]
+
+        # Mask tokens: [1, 1, pred_dim] -> [B, N_mask, pred_dim]
+        mask_tokens = self.mask_token.expand(B, num_mask, -1)
+        
+        if self.predictor.pos_embed_type != "rope":
+            # Absolute pos embed added to mask tokens
+            mask_pos_embed = self.predictor.pos_embed[:, mask_indices, :].expand(B, -1, -1)
+            mask_tokens = mask_tokens + mask_pos_embed
+            
+        pred_input = torch.cat([student_out_proj, mask_tokens], dim=1) # [B, N, pred_dim]
+        
+        # Reorder to original sequence order
+        all_indices = torch.cat([keep_indices, mask_indices]) # [N]
+        sort_indices = torch.argsort(all_indices) # [N]
+        pred_input = pred_input[:, sort_indices, :] # [B, N, pred_dim]
+
+        if self.predictor.pos_embed_type == "rope":
+            # Rope handles positions internally if full sequence is provided
+            pred_out = self.predictor(
+                pred_input, 
+                pos_ids=None,
+                grid_size=grid_size
+            )
+        else:
+            pred_out = self.predictor(pred_input, add_pos_embed=False)
+            
+        # Predictions at mask locations
+        predictions = pred_out[:, mask_indices, :] # [B, N_mask, pred_dim]
+        
+        # Project back to encoder dimension
+        predictions = self.predictor_output_proj(predictions) # [B, N_mask, encoder_dim]
+        
+        # Targets
+        teacher_targets = teacher_full[:, mask_indices, :] # [B, N_mask, encoder_dim]
+        
+        return self.criterion(predictions, teacher_targets)
 
     def configure_optimizers(self) -> Dict[str, Any]:
         optimizer = self.hparams.optimizer(params=self.parameters())
