@@ -38,7 +38,7 @@ def main(cfg: DictConfig) -> Dict[str, Any]:
     # Set float32 matmul precision for Tensor Cores
     torch.set_float32_matmul_precision("medium")
 
-    # Log config tree to wandb
+    # Log config tree and .hydra folder to wandb
     for lg in logger:
         if isinstance(lg, WandbLogger):
             # check if config_tree.log exists
@@ -46,6 +46,14 @@ def main(cfg: DictConfig) -> Dict[str, Any]:
             if config_tree_path.exists():
                 log.info("Logging config tree to WandB...")
                 lg.experiment.save(str(config_tree_path), policy="now", base_path=cfg.paths.output_dir)
+
+            # Upload .hydra folder contents
+            hydra_dir = Path(cfg.paths.output_dir, ".hydra")
+            if hydra_dir.exists() and hydra_dir.is_dir():
+                log.info("Logging .hydra folder to WandB...")
+                for hydra_file in hydra_dir.iterdir():
+                    if hydra_file.is_file():
+                        lg.experiment.save(str(hydra_file), policy="now", base_path=cfg.paths.output_dir)
 
     log.info(f"Instantiating trainer <{cfg.trainer._target_}>")
     trainer: L.Trainer = hydra.utils.instantiate(
