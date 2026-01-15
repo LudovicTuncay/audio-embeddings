@@ -34,6 +34,8 @@ callbacks:
   wandb_offline_checkpoint:
     _target_: src.callbacks.wandb_callbacks.WandbOfflineCheckpointCallback
 
+  rich_progress_bar: null
+
 model:
   net:
     encoder:
