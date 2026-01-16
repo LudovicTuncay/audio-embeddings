@@ -24,7 +24,7 @@ data:
 logger:
   wandb:
     name: "cluster-rqa-jepa-audioset-200k-128bs"
-    offline: False
+    offline: True
     log_model: True
 
 callbacks:
@@ -32,3 +32,6 @@ callbacks:
     save_weights_only: True
 
   rich_progress_bar: null
+
+  wandb_offline_checkpoint:
+    _target_: src.callbacks.wandb_callbacks.WandbOfflineCheckpointCallback
