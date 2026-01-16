@@ -1,4 +1,5 @@
 import torch
+import functools
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.linalg import vector_norm
@@ -60,7 +61,10 @@ class RQAJEPAModule(AudioJEPAModule):
         
         self.rq_lambda = rq_lambda
         # Store rq_criterion separately
-        self.rq_criterion = rq_criterion if rq_criterion is not None else nn.CrossEntropyLoss()
+        if rq_criterion is not None:
+             self.rq_criterion = rq_criterion() if isinstance(rq_criterion, (type, functools.partial)) or callable(rq_criterion) and not isinstance(rq_criterion, nn.Module) else rq_criterion
+        else:
+             self.rq_criterion = nn.CrossEntropyLoss()
         
         self.rq_input_type = rq_input_type
         if self.rq_input_type not in ["teacher", "spectrogram"]:

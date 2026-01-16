@@ -1,5 +1,6 @@
 import torch
 import math
+import functools
 import torch.nn as nn
 import torch.nn.functional as F
 import lightning as L
@@ -44,8 +45,13 @@ class AudioJEPAModule(L.LightningModule):
         self.warmup_pct = warmup_pct
         self.final_lr_ratio = final_lr_ratio
         self.spectrogram_adjustment_mode = spectrogram_adjustment_mode
-        self.criterion = criterion if criterion is not None else nn.MSELoss()
         
+        # Handle Criterion (support partials/factories to avoid checkpointing warnings)
+        if criterion is not None:
+            self.criterion = criterion() if isinstance(criterion, (type, functools.partial)) or callable(criterion) and not isinstance(criterion, nn.Module) else criterion
+        else:
+            self.criterion = nn.MSELoss()
+            
         # Store optimizer partial to avoid saving it in hparams
         self.optimizer_config = optimizer
         

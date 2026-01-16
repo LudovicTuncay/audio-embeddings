@@ -17,6 +17,7 @@ spectrogram_adjustment_mode: truncate
 
 criterion:
   _target_: torch.nn.MSELoss
+  _partial_: true
   reduction: mean
 
 net:
