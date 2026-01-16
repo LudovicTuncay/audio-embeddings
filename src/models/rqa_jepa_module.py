@@ -56,7 +56,7 @@ class RQAJEPAModule(AudioJEPAModule):
             spectrogram_adjustment_mode=spectrogram_adjustment_mode,
             criterion=jepa_criterion, # Pass jepa_criterion as criterion to base class
         )
-        self.save_hyperparameters(logger=False, ignore=["jepa_criterion", "rq_criterion"])
+        self.save_hyperparameters(logger=False, ignore=["jepa_criterion", "rq_criterion", "net", "optimizer"])
         
         self.rq_lambda = rq_lambda
         # Store rq_criterion separately

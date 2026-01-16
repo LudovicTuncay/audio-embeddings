@@ -39,7 +39,7 @@ class AudioJEPAModule(L.LightningModule):
         criterion: Optional[torch.nn.Module] = None,
     ):
         super().__init__()
-        self.save_hyperparameters(logger=False, ignore=["criterion"])
+        self.save_hyperparameters(logger=False, ignore=["criterion", "net", "optimizer"])
         
         self.warmup_pct = warmup_pct
         self.final_lr_ratio = final_lr_ratio
