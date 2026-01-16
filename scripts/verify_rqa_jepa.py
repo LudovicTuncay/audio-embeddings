@@ -6,10 +6,10 @@ import os
 # Add src to python path
 sys.path.append(os.getcwd())
 
-from src.models.rq_jepa_module import RQJEPAModule
+from src.models.rqa_jepa_module import RQAJEPAModule
 
-def verify_rq_jepa():
-    print("Verifying RQ-JEPA Implementation...")
+def verify_rqa_jepa():
+    print("Verifying RQA-JEPA Implementation...")
 
     # Mock Net Config
     net_config = {
@@ -24,8 +24,8 @@ def verify_rq_jepa():
     optimizer_partial = lambda params: torch.optim.Adam(params)
 
     # --- Mode 1: Teacher Input ---
-    print("\n--- Verifying RQ-JEPA (Mode: teacher) ---")
-    model_teacher = RQJEPAModule(
+    print("\n--- Verifying RQA-JEPA (Mode: teacher) ---")
+    model_teacher = RQAJEPAModule(
         optimizer=optimizer_partial,
         net=net_config,
         jepa_criterion=nn.MSELoss(),
@@ -51,8 +51,8 @@ def verify_rq_jepa():
     assert loss_teacher.ndim == 0
 
     # --- Mode 2: Spectrogram Input ---
-    print("\n--- Verifying RQ-JEPA (Mode: spectrogram) ---")
-    model_spec = RQJEPAModule(
+    print("\n--- Verifying RQA-JEPA (Mode: spectrogram) ---")
+    model_spec = RQAJEPAModule(
         optimizer=optimizer_partial,
         net=net_config,
         jepa_criterion=nn.MSELoss(),
@@ -72,4 +72,4 @@ def verify_rq_jepa():
     print("\nVerification Passed!")
 
 if __name__ == "__main__":
-    verify_rq_jepa()
+    verify_rqa_jepa()

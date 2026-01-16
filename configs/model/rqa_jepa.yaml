@@ -1,4 +1,4 @@
-_target_: src.models.rq_jepa_module.RQJEPAModule
+_target_: src.models.rqa_jepa_module.RQAJEPAModule
 
 optimizer:
   _target_: torch.optim.AdamW

@@ -20,6 +20,11 @@ class PatchEmbed(nn.Module):
         embed_dim: int = 768,
     ):
         super().__init__()
+        self.img_size = img_size
+        self.patch_size = patch_size
+        self.in_chans = in_chans
+        self.embed_dim = embed_dim
+        
         self.patch_embed = TimmPatchEmbed(
             img_size=img_size,
             patch_size=patch_size,

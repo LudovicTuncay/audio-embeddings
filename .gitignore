@@ -14,3 +14,6 @@ logs/
 
 # Large data files
 *.h5 
+
+# Data
+data/

@@ -7,9 +7,9 @@ from typing import Any, Dict, Optional, Tuple
 from src.models.audio_jepa_module import AudioJEPAModule
 from src.models.components.random_projection_quantizer import RandomProjectionQuantizer
 
-class RQJEPAModule(AudioJEPAModule):
+class RQAJEPAModule(AudioJEPAModule):
     """
-    RQ-JEPA Lightning Module.
+    RQA-JEPA Lightning Module.
     Extends AudioJEPAModule with Random Projection Quantization loss.
     
     Args:
@@ -74,9 +74,8 @@ class RQJEPAModule(AudioJEPAModule):
         else: # spectrogram
              # Input is raw patches
              # patch_embed is locally available on self
-             # However, patch_size is stored in self.patch_embed.patch_embed.patch_size
-             patch_size = self.patch_embed.patch_embed.patch_size
-             in_chans = self.patch_embed.patch_embed.in_chans
+             patch_size = self.patch_embed.patch_size
+             in_chans = self.patch_embed.in_chans
              quantizer_input_dim = patch_size[0] * patch_size[1] * in_chans
 
         self.quantizer = RandomProjectionQuantizer(
@@ -133,7 +132,7 @@ class RQJEPAModule(AudioJEPAModule):
         Returns:
              torch.Tensor: Flattened patches [B, N, patch_dim]
         """
-        patch_size = self.patch_embed.patch_embed.patch_size # (H, W)
+        patch_size = self.patch_embed.patch_size # (H, W)
         
         # Using kernel_size=patch_size, stride=patch_size ensures non-overlapping patches
         # F.unfold returns [B, C*pH*pW, L]
@@ -180,7 +179,7 @@ class RQJEPAModule(AudioJEPAModule):
         with torch.no_grad():
             teacher_full = self.teacher(patches, grid_size=current_grid_size)
         
-        # Prepare targets and logits for RQ-JEPA
+        # Prepare targets and logits for RQA-JEPA
         m = mask[0]
         mask_indices = torch.nonzero(m).flatten()
         
@@ -224,7 +223,7 @@ class RQJEPAModule(AudioJEPAModule):
         with torch.no_grad():
             teacher_full = self.teacher(patches, grid_size=current_grid_size)
             
-            # Prepare targets and logits for RQ-JEPA
+            # Prepare targets and logits for RQA-JEPA
             m = mask[0]
             mask_indices = torch.nonzero(m).flatten()
             

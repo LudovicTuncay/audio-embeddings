@@ -1,18 +1,18 @@
 # @package _global_
 
 # to execute this experiment run:
-# python train.py experiment=cluster_rq_jepa_audioset
+# python train.py experiment=cluster_rqa_jepa_audioset
 
 defaults:
   - override /data: audioset
-  - override /model: rq_jepa
+  - override /model: rqa_jepa
   - override /trainer: gpu
   - override /logger: wandb
 
 # all parameters below will be merged with parameters from default configurations set above
 # this allows you to overwrite only specified parameters
 
-tags: ["audioset", "rq-jepa", "baseline", "cluster GPU"]
+tags: ["audioset", "rqa-jepa", "baseline", "cluster GPU"]
 
 trainer:
   devices: 4
@@ -26,7 +26,7 @@ data:
 
 logger:
   wandb:
-    name: "cluster-rq-jepa-audioset-200k-128bs"
+    name: "cluster-rqa-jepa-audioset-200k-128bs"
     offline: False
     log_model: True
 
