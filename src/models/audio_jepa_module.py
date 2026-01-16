@@ -46,6 +46,9 @@ class AudioJEPAModule(L.LightningModule):
         self.spectrogram_adjustment_mode = spectrogram_adjustment_mode
         self.criterion = criterion if criterion is not None else nn.MSELoss()
         
+        # Store optimizer partial to avoid saving it in hparams
+        self.optimizer_config = optimizer
+        
         # Components
         self.spectrogram = Spectrogram(**net.get("spectrogram", {}))
         self.patch_embed = PatchEmbed(**net.get("patch_embed", {}))
@@ -337,7 +340,7 @@ class AudioJEPAModule(L.LightningModule):
         return self.criterion(predictions, teacher_targets)
 
     def configure_optimizers(self) -> Dict[str, Any]:
-        optimizer = self.hparams.optimizer(params=self.parameters())
+        optimizer = self.optimizer_config(params=self.parameters())
         
         # Determine total steps
         if self.trainer.max_steps and self.trainer.max_steps > 0:
