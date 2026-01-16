@@ -1,30 +1,30 @@
 # @package _global_
 
-# to execute this experiment run:
-# python train.py experiment=audioset_rope
-
 defaults:
   - override /data: audioset
   - override /model: audio_jepa
-  - override /trainer: ddp
+  - override /trainer: gpu
   - override /logger: wandb
+  - override /callbacks: default
 
 # all parameters below will be merged with parameters from default configurations set above
 # this allows you to overwrite only specified parameters
 
-tags: ["audioset", "jepa", "baseline", "cluster", "DDP", "4GPU"]
+tags: ["audioset", "jepa", "RoPE", "cluster"]
 
 trainer:
-  devices: 4
   max_steps: 200000
 
 data:
-  batch_size: 128
+  data_dir: ${paths.data_dir}
+  train_h5: AudioSet/full_unbal_bal_train_wav.h5
+  val_h5: AudioSet/eval_soxrhq.h5
+  batch_size: 256
   num_workers: ${oc.decode:${oc.env:SLURM_CPUS_PER_TASK}}
 
 logger:
   wandb:
-    name: "jepa-audioset-baseline-200k-128x4bs"
+    name: "jepa-audioset-200k-256bs-rope"
     offline: True
     log_model: False
 
@@ -32,7 +32,14 @@ callbacks:
   model_checkpoint:
     save_weights_only: True
   
+  rich_progress_bar: null
+  
   wandb_offline_checkpoint:
     _target_: src.callbacks.wandb_callbacks.WandbOfflineCheckpointCallback
 
-  rich_progress_bar: null
+model:
+  net:
+    encoder:
+      pos_embed_type: rope
+    predictor:
+      pos_embed_type: rope

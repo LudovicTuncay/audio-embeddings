@@ -15,10 +15,7 @@ defaults:
 tags: ["audioset", "rqa-jepa", "baseline", "cluster GPU"]
 
 trainer:
-  devices: 4
-  num_nodes: 1
   max_steps: 200000
-  strategy: ddp
 
 data:
   batch_size: 96
