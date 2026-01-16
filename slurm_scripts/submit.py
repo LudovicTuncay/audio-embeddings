@@ -23,6 +23,8 @@ TEMPLATE = """#!/bin/bash
 
 set -x
 
+export MPLBACKEND=Agg
+
 cd {workdir}
 
 export PYTHONUNBUFFERED=1
