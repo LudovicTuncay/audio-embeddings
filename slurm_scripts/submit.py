@@ -163,7 +163,16 @@ def main():
         
     # Append any unknown arguments passed to the script (e.g. model.rq_lambda=0.5)
     if unknown:
-        extra_args_list.extend(unknown)
+        for arg in unknown:
+            if arg.startswith(("+", "~")):
+                extra_args_list.append(arg)
+            elif "=" in arg:
+                # If it's an assignment, use ++ to Force Add/Override
+                # This prevents "ConfigAttributeError" if the key isn't in the struct
+                # and works fine if it IS in the struct.
+                extra_args_list.append("++" + arg)
+            else:
+                extra_args_list.append(arg)
         
     extra_args = " ".join(extra_args_list)
         

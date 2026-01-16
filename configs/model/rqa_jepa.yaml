@@ -23,6 +23,7 @@ rq_criterion:
   reduction: mean
 
 rq_lambda: 0.5
+rq_input_type: teacher
 codebook_dim: 16
 vocab_size: 8192
 
