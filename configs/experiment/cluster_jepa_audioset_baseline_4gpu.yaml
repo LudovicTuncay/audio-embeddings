@@ -1,40 +1,31 @@
 # @package _global_
 
-# to execute this experiment run:
-# python train.py experiment=cluster_jepa_audioset_large
-
 defaults:
   - override /data: audioset
   - override /model: audio_jepa
-  - override /trainer: gpu
+  - override /trainer: ddp
   - override /logger: wandb
+  - override /callbacks: default
 
 # all parameters below will be merged with parameters from default configurations set above
 # this allows you to overwrite only specified parameters
 
-tags: ["audioset", "jepa", "large", "cluster", "1GPU"]
-
-# ViT Large Configuration
-model:
-  net:
-    patch_embed:
-      embed_dim: 1024
-    encoder:
-      embed_dim: 1024
-      depth: 24
-      num_heads: 16
+tags: ["audioset", "jepa", "baseline", "cluster", "DDP", "Multi-GPU"]
 
 trainer:
-  devices: 1
-  max_steps: 300000
+  devices: ${oc.decode:${oc.env:SLURM_NTASKS}}
+  max_steps: 200000
 
 data:
-  batch_size: 128
+  data_dir: ${paths.data_dir}
+  train_h5: AudioSet/full_unbal_bal_train_wav.h5
+  val_h5: AudioSet/eval_soxrhq.h5
+  batch_size: 256
   num_workers: ${oc.decode:${oc.env:SLURM_CPUS_PER_TASK}}
 
 logger:
   wandb:
-    name: "jepa-audioset-large-300k-128bs"
+    name: "jepa-audioset-baseline-200k-256x4bs"
     offline: True
     log_model: False
 
@@ -42,7 +33,7 @@ callbacks:
   model_checkpoint:
     save_weights_only: True
   
+  rich_progress_bar: null
+  
   wandb_offline_checkpoint:
     _target_: src.callbacks.wandb_callbacks.WandbOfflineCheckpointCallback
-
-  rich_progress_bar: null

@@ -19,6 +19,7 @@ trainer:
 
 data:
   batch_size: 128
+  num_workers: ${oc.decode:${oc.env:SLURM_CPUS_PER_TASK}}
 
 logger:
   wandb:

@@ -8,8 +8,8 @@
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=24
 #SBATCH --hint=nomultithread
-#SBATCH --output=logs/slurm/AudioJEPA-Baseline-1GPU-%j.out
-#SBATCH --error=logs/slurm/AudioJEPA-Baseline-1GPU-%j.err
+#SBATCH --output=logs/slurm/AudioJEPA-baseline-1GPU-%j.out
+#SBATCH --error=logs/slurm/AudioJEPA-baseline-1GPU-%j.err
 
 # --------- PROGRAM START ------------
 set -x
