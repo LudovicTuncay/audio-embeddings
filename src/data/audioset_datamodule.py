@@ -232,46 +232,10 @@ class AudioSetDataModule(L.LightningDataModule):
 
     @staticmethod
     def collate_fn(batch: List[Dict[str, Any]], mode: str = "pad") -> Dict[str, Any]:
-        """
-        Collate function to pad or truncate waveforms.
-        """
-        waveforms = [item['waveform'] for item in batch] # List of [1, T]
-        targets = torch.stack([item['target'] for item in batch])
-        audio_names = [item['audio_name'] for item in batch]
-        indices = [item['index'] for item in batch]
-        
-        # Find max or min length in the batch
-        lengths = [w.shape[-1] for w in waveforms]
-        
-        if mode == "pad":
-            target_wave_len = max(lengths)
-        elif mode == "truncate":
-            target_wave_len = min(lengths)
-        else:
-            raise ValueError(f"Unknown collate mode: {mode}")
-        
-        # Pad or Truncate waveforms
-        processed_waveforms = []
-        for w in waveforms:
-            current_len = w.shape[-1]
-            if current_len < target_wave_len:
-                pad_amount = target_wave_len - current_len
-                # Pad at the end
-                w_padded = torch.nn.functional.pad(w, (0, pad_amount))
-                processed_waveforms.append(w_padded)
-            elif current_len > target_wave_len:
-                 # Truncate
-                 w_truncated = w[..., :target_wave_len]
-                 processed_waveforms.append(w_truncated)
-            else:
-                processed_waveforms.append(w)
-                
-        processed_waveforms = torch.stack(processed_waveforms)
-        
-        return {
-            "waveform": processed_waveforms,
-            "target": targets,
-            "audio_name": audio_names,
-            "index": indices
-        }
-
+        return collate_audio_batch(
+            batch=batch,
+            waveform_key="waveform",
+            mode=mode,
+            # You can optionally filter keys:
+            # include_keys=["waveform", "audio_name, "target"]
+        )
