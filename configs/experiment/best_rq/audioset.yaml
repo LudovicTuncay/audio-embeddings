@@ -1,0 +1,37 @@
+# @package _global_
+
+# to execute this experiment run:
+# python train.py experiment=best_rq/audioset
+
+defaults:
+  - override /data: audioset
+  - override /model: best_rq
+  - override /trainer: gpu
+  - override /logger: wandb
+
+# all parameters below will be merged with parameters from default configurations set above
+# this allows you to overwrite only specified parameters
+
+tags: ["audioset", "best-rq", "baseline", "cluster GPU"]
+
+trainer:
+  max_steps: 200000
+
+data:
+  batch_size: 256
+  num_workers: ${oc.decode:${oc.env:SLURM_CPUS_PER_TASK}}
+
+logger:
+  wandb:
+    name: "cluster-best-rq-vit-audioset-200k-256bs"
+    offline: True
+    log_model: False
+
+callbacks:
+  model_checkpoint:
+    save_weights_only: True
+
+  rich_progress_bar: null
+
+  wandb_offline_checkpoint:
+    _target_: src.callbacks.wandb_callbacks.WandbOfflineCheckpointCallback
