@@ -7,7 +7,7 @@ import lightning as L
 import numpy as np
 import pandas as pd
 import torch
-from src.data.audio_collate import collate_audio_batch
+from src.data.audio_utils import collate_audio_batch
 from torch.utils.data import DataLoader, Dataset
 
 from src.data.audio_utils import resample_and_crop
