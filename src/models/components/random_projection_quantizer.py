@@ -47,7 +47,6 @@ class RandomProjectionQuantizer(nn.Module):
     def forward(self, x):
         """Forward the latent vector to obtain a quantised output"""
 
-        x = F.normalize(x @ self.P, dim=2)
-        return vector_norm(
-            (self.CB.unsqueeze(1) - x.unsqueeze(1)), dim=-1
-        ).argmin(dim=1)
+        x = F.normalize(x @ self.P, dim=-1)
+        # since both x and CB are normalized, we can just take the argmax of the dot product
+        return F.linear(x, self.CB).argmax(dim=-1)
