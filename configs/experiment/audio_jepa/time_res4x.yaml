@@ -1,0 +1,58 @@
+# @package _global_
+
+defaults:
+  - override /data: audioset
+  - override /model: audio_jepa
+  - override /trainer: gpu
+  - override /logger: wandb
+  - override /callbacks: default
+
+# all parameters below will be merged with parameters from default configurations set above
+# this allows you to overwrite only specified parameters
+
+tags: ["audioset", "jepa", "time_res4x", "cluster"]
+
+trainer:
+  max_steps: 200000
+
+data:
+  data_dir: ${paths.data_dir}
+  train_h5: AudioSet/full_unbal_bal_train_wav.h5
+  val_h5: AudioSet/eval_soxrhq.h5
+  batch_size: 256
+  num_workers: ${oc.decode:${oc.env:SLURM_CPUS_PER_TASK}}
+
+logger:
+  wandb:
+    name: "jepa-audioset-time_res4x-200k-256bs"
+    offline: True
+    log_model: False
+
+callbacks:
+  model_checkpoint:
+    save_weights_only: True
+  
+  rich_progress_bar: null
+  
+  wandb_offline_checkpoint:
+    _target_: src.callbacks.wandb_callbacks.WandbOfflineCheckpointCallback
+
+model:
+  net:
+    spectrogram:
+      win_length_ms: 32 # quartered
+      hop_length_ms: 9.765625 # quartered
+    
+    patch_embed:
+      img_size: [128, 1024] # width quadrupled because hop is quartered
+      
+    masking:
+      input_size: [128, 1024]
+      
+    encoder:
+      num_patches: 512 # (128/16) * (1024/16) = 8 * 64 = 512
+      img_size: [128, 1024]
+      
+    predictor:
+      num_patches: 512
+      img_size: [128, 1024]

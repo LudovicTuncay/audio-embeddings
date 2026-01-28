@@ -1,0 +1,58 @@
+# @package _global_
+
+defaults:
+  - override /data: audioset
+  - override /model: audio_jepa
+  - override /trainer: gpu
+  - override /logger: wandb
+  - override /callbacks: default
+
+# all parameters below will be merged with parameters from default configurations set above
+# this allows you to overwrite only specified parameters
+
+tags: ["audioset", "jepa", "time_res2x", "cluster"]
+
+trainer:
+  max_steps: 200000
+
+data:
+  data_dir: ${paths.data_dir}
+  train_h5: AudioSet/full_unbal_bal_train_wav.h5
+  val_h5: AudioSet/eval_soxrhq.h5
+  batch_size: 256
+  num_workers: ${oc.decode:${oc.env:SLURM_CPUS_PER_TASK}}
+
+logger:
+  wandb:
+    name: "jepa-audioset-time_res2x-200k-256bs"
+    offline: True
+    log_model: False
+
+callbacks:
+  model_checkpoint:
+    save_weights_only: True
+  
+  rich_progress_bar: null
+  
+  wandb_offline_checkpoint:
+    _target_: src.callbacks.wandb_callbacks.WandbOfflineCheckpointCallback
+
+model:
+  net:
+    spectrogram:
+      win_length_ms: 64 # halved
+      hop_length_ms: 19.53125 # halved
+    
+    patch_embed:
+      img_size: [128, 512] # width doubled because hop is halved
+      
+    masking:
+      input_size: [128, 512]
+      
+    encoder:
+      num_patches: 256 # (128/16) * (512/16) = 8 * 32 = 256
+      img_size: [128, 512] # Explicitly set img_size for ViT to match patch_embed
+      
+    predictor:
+      num_patches: 256
+      img_size: [128, 512]
