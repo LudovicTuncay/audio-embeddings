@@ -14,7 +14,6 @@ ema_anneal_end_step: null # computed automatically
 
 spectrogram_adjustment_mode: truncate
 
-
 criterion:
   _target_: torch.nn.MSELoss
   _partial_: true
@@ -26,24 +25,24 @@ net:
     n_fft: 2048
     # win_length: 2048
     # hop_length: 625
-    win_length_ms: 128 # 2048 / 16000 * 1000 = 128ms
-    hop_length_ms: 39.0625 # 625 / 16000 * 1000 = 39.0625ms
+    win_length_ms: 128 # 2048 / 16000 * 1000 = 128ms # half is 64ms and a quarter is 32ms
+    hop_length_ms: 39.0625 # 625 / 16000 * 1000 = 39.0625ms # half is 19.53125ms and a quarter is 9.765625ms
     n_mels: 128
     f_min: 0
     f_max: 8000
     power: 2.0
-  
+
   patch_embed:
     img_size: [128, 256]
     patch_size: [16, 16]
     in_chans: 1
     embed_dim: 768
-  
+
   masking:
     input_size: [128, 256]
     patch_size: [16, 16]
     mask_ratio: [0.4, 0.6]
-  
+
   encoder:
     embed_dim: 768
     depth: 12
@@ -55,7 +54,7 @@ net:
     drop_path_rate: 0.1
     num_patches: 128 # (128/16) * (256/16) = 8 * 16 = 128
     pos_embed_type: "sincos" # "rope", "sincos", "learnable"
-  
+
   predictor:
     embed_dim: 768
     depth: 4 # Usually smaller than encoder
