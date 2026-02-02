@@ -10,8 +10,12 @@ model_checkpoint:
   monitor: "val/loss"
   mode: "min"
   save_last: True
-  save_weights_only: True
+  save_weights_only: False
+  save_top_k: 0
   auto_insert_metric_name: False
+
+safetensors:
+  _target_: src.callbacks.safetensors_callback.SafetensorsCallback
 
 # early_stopping:
 #   monitor: "val/loss"

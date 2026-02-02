@@ -29,8 +29,8 @@ logger:
     log_model: False
 
 callbacks:
-  model_checkpoint:
-    save_weights_only: True
+  # model_checkpoint:
+  #   save_weights_only: True
 
   rich_progress_bar: null
 
