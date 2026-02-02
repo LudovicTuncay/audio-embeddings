@@ -34,13 +34,13 @@ class WandbOfflineCheckpointCallback(Callback):
             return
             
         # WandB 'save' with base_path argument preserves relative structure
-        # We want to save everything in checkpoints dir
-        # glob *.ckpt
-        ckpt_files = glob.glob(os.path.join(dirpath, "*.ckpt"))
-        for ckpt in ckpt_files:
+        # We want to save only .safetensors files to WandB
+        # glob *.safetensors
+        sf_files = glob.glob(os.path.join(dirpath, "*.safetensors"))
+        for sf in sf_files:
             # Policy="now" ensures it's copied to wandb directory immediately (if offline)
             # or uploaded (if online)
-            logger.experiment.save(ckpt, base_path=os.path.dirname(dirpath), policy="now")
+            logger.experiment.save(sf, base_path=os.path.dirname(dirpath), policy="now")
 
         # Cleanup broken symlinks in the wandb directory
         # This is necessary because if a checkpoint is deleted by ModelCheckpoint (e.g. save_top_k),
