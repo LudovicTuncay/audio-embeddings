@@ -24,7 +24,6 @@ data:
 
 logger:
   wandb:
-    name: "jepa-audioset-large-200k-256bs"
     offline: True
     log_model: False
 

@@ -1,7 +1,7 @@
 # @package _global_
 
 # to execute this experiment run:
-# python train.py experiment=local_m4_mock
+# python train.py experiment=local/m4_mock_jepa
 
 defaults:
   - override /data: mock_audioset

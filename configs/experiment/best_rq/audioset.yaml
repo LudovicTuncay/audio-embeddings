@@ -23,7 +23,6 @@ data:
 
 logger:
   wandb:
-    name: "cluster-best-rq-vit-audioset-200k-256bs"
     offline: True
     log_model: False
 

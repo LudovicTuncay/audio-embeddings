@@ -23,7 +23,6 @@ data:
 
 logger:
   wandb:
-    name: "cluster-rqa-jepa-audioset-200k-128bs"
     offline: True
     log_model: False
 

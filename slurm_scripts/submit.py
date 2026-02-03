@@ -142,11 +142,25 @@ def generate_wandb_name(config_path, num_gpus, suffix=None):
     return "-".join(parts)
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate and submit Slurm jobs for Audio Embeddings.")
+    parser = argparse.ArgumentParser(
+        description=(
+            "Generate and submit Slurm jobs for Audio Embeddings. "
+            "WandB run names are generated from the experiment config "
+            "(model, data, max_steps, batch_size x GPUs), plus optional suffix."
+        )
+    )
     parser.add_argument("experiment", type=str, help="Experiment config path (e.g., audio_jepa/baseline)")
     parser.add_argument("--gpus", type=int, default=1, help="Number of GPUs to request (default: 1)")
     parser.add_argument("--time", type=str, default="20:00:00", help="Time limit (HH:MM:SS) (default: 20:00:00)")
-    parser.add_argument("--suffix", type=str, help="Optional suffix for WandB run name")
+    parser.add_argument(
+        "--suffix",
+        type=str,
+        help=(
+            "Optional suffix for WandB run name. "
+            "Base name is derived from the experiment config: "
+            "model + data + max_steps (k/m) + batch_size x GPUs."
+        ),
+    )
     parser.add_argument("--dry-run", action="store_true", help="Print the generated script without submitting")
     
     args, unknown = parser.parse_known_args()
