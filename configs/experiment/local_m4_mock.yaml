@@ -1,0 +1,37 @@
+# @package _global_
+
+# to execute this experiment run:
+# python train.py experiment=local_m4_mock
+
+defaults:
+  - override /data: mock_audioset
+  - override /model: audio_jepa
+  - override /trainer: mps
+  - override /logger: wandb
+
+# all parameters below will be merged with parameters from default configurations set above
+# this allows you to overwrite only specified parameters
+
+tags: ["mock", "jepa", "local", "mps"]
+
+trainer:
+  # devices: 1 # set in trainer/mps.yaml
+  max_steps: 100
+  log_every_n_steps: 1
+  val_check_interval: 50
+  limit_val_batches: 5
+
+data:
+  batch_size: 8
+
+logger:
+  wandb:
+    name: "local-m4-mock-jepa"
+    offline: True
+    log_model: False
+
+callbacks:
+  model_checkpoint:
+    save_weights_only: True
+    monitor: null # verify we can save without monitoring
+  device_stats: null

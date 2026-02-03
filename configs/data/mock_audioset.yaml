@@ -1,0 +1,7 @@
+_target_: src.data.mock_audioset_datamodule.MockAudioSetDataModule
+batch_size: 16
+num_workers: 0  # 0 is often better for simple debugging/validation on local Mac
+pin_memory: True
+max_audio_length_sec: 10.0
+target_sample_rate: 16000
+collate_mode: pad
