@@ -54,7 +54,7 @@ srun .venv/bin/python -u -O src/train.py \\
     trainer.devices={gpus} \\
     +trainer.strategy={strategy} \\
     +trainer.max_time="{max_time}" \\
-    logger.wandb.name="{wandb_name}" \\
+    ++logger.wandb.name="{wandb_name}" \\
     {extra_args}
 """
 
