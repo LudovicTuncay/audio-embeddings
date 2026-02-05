@@ -35,8 +35,17 @@ class SafetensorsCallback(Callback):
             base_name = os.path.splitext(os.path.basename(ckpt_path))[0]
             sf_path = os.path.join(dirpath, f"{base_name}.safetensors")
             
-            # If safetensors doesn't exist, create it.
+            # Check if we should convert:
+            # 1. If safetensors doesn't exist
+            # 2. Or if ckpt is newer than safetensors (e.g. last.ckpt was updated)
+            should_convert = False
             if not os.path.exists(sf_path):
+                should_convert = True
+            else:
+                if os.path.getmtime(ckpt_path) > os.path.getmtime(sf_path):
+                    should_convert = True
+
+            if should_convert:
                 try:
                     # Load checkpoint (CPU)
                     # We accept "unsafe" load here because we created these files locally

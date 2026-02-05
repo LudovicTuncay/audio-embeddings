@@ -21,26 +21,40 @@ class WandbOfflineCheckpointCallback(Callback):
             # If checkpoint callback exists
             if trainer.checkpoint_callback:
                 # We can save all files in dirpath
-                self._save_checkpoints(trainer.logger, trainer.checkpoint_callback.dirpath)
+                self._save_checkpoints(trainer.logger, trainer)
 
     @rank_zero_only
     def on_fit_end(self, trainer, pl_module):
          if trainer.logger and isinstance(trainer.logger, WandbLogger):
             if trainer.checkpoint_callback:
-                self._save_checkpoints(trainer.logger, trainer.checkpoint_callback.dirpath)
+                self._save_checkpoints(trainer.logger, trainer)
 
-    def _save_checkpoints(self, logger, dirpath):
+    def _save_checkpoints(self, logger, trainer):
+        dirpath = trainer.checkpoint_callback.dirpath
         if not dirpath or not os.path.exists(dirpath):
             return
             
         # WandB 'save' with base_path argument preserves relative structure
-        # We want to save only .safetensors files to WandB
-        # glob *.safetensors
-        sf_files = glob.glob(os.path.join(dirpath, "*.safetensors"))
-        for sf in sf_files:
-            # Policy="now" ensures it's copied to wandb directory immediately (if offline)
-            # or uploaded (if online)
-            logger.experiment.save(sf, base_path=os.path.dirname(dirpath), policy="now")
+        # We want to save only the last.safetensors file to WandB
+        
+        # Identify the last checkpoint path
+        last_ckpt = trainer.checkpoint_callback.last_model_path
+        
+        # Fallback: if last_model_path is not set, but save_last is True, 
+        # check for 'last.ckpt' explicitly.
+        if (not last_ckpt) and trainer.checkpoint_callback.save_last:
+            potential_last = os.path.join(dirpath, "last.ckpt")
+            if os.path.exists(potential_last):
+                last_ckpt = potential_last
+                
+        if last_ckpt and os.path.exists(last_ckpt):
+            # Construct expected safetensors path
+            base_name = os.path.splitext(os.path.basename(last_ckpt))[0]
+            sf_path = os.path.join(dirpath, f"{base_name}.safetensors")
+            
+            if os.path.exists(sf_path):
+                # Policy="now" ensures it's copied to wandb directory immediately
+                logger.experiment.save(sf_path, base_path=os.path.dirname(dirpath), policy="now")
 
         # Cleanup broken symlinks in the wandb directory
         # This is necessary because if a checkpoint is deleted by ModelCheckpoint (e.g. save_top_k),
