@@ -12,7 +12,8 @@ def verify_data():
     dm = AudioSetDataModule(
         data_dir="data/AudioSet",
         batch_size=4,
-        num_workers=0 # Use 0 for debugging
+        num_workers=0, # Use 0 for debugging
+        target_sample_rate=32000
     )
     dm.setup()
     

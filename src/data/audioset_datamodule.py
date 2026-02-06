@@ -10,7 +10,7 @@ import torch
 from src.data.audio_utils import collate_audio_batch
 from torch.utils.data import DataLoader, Dataset
 
-from src.data.audio_utils import resample_and_crop
+from src.data.audio_utils import DatasetResamplerCropper
 
 
 class AudioSetDataset(Dataset):
@@ -51,6 +51,11 @@ class AudioSetDataset(Dataset):
 
         self.valid_indices = list(range(self.total_length))
 
+        # Instantiate resampler
+        self.resampler = DatasetResamplerCropper(
+            target_sr=target_sample_rate, max_length=max_length
+        )
+
         if exclude_csv_path and os.path.exists(exclude_csv_path):
             df = pd.read_csv(exclude_csv_path)
             if "Index" in df.columns:
@@ -85,12 +90,7 @@ class AudioSetDataset(Dataset):
         waveform = torch.from_numpy(waveform)  # [T]
 
         # Resample and crop
-        waveform = resample_and_crop(
-            waveform,
-            source_sr=self.source_sample_rate,
-            target_sr=self.target_sample_rate,
-            max_length=self.max_length,
-        )
+        waveform = self.resampler(waveform, source_sr=self.source_sample_rate)
 
         # Load target and name
         target = self.h5_file["target"][real_idx]
