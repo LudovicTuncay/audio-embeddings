@@ -8,7 +8,7 @@ csv_path = os.path.join(data_dir, "silent_files_balanced_train_soxrhq.csv")
 
 print(f"Inspecting {h5_path}...")
 try:
-    with h5py.File(h5_path, 'r') as f:
+    with h5py.File(h5_path, "r") as f:
         print("Keys:", list(f.keys()))
         # Inspect the first few items if it's a group or dataset
         for key in list(f.keys())[:5]:
@@ -21,7 +21,9 @@ try:
                 for subkey in list(item.keys())[:3]:
                     subitem = item[subkey]
                     if isinstance(subitem, h5py.Dataset):
-                        print(f"  Dataset {subkey}: shape={subitem.shape}, dtype={subitem.dtype}")
+                        print(
+                            f"  Dataset {subkey}: shape={subitem.shape}, dtype={subitem.dtype}"
+                        )
 except Exception as e:
     print(f"Error reading HDF5: {e}")
 

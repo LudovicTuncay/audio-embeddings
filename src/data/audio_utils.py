@@ -5,7 +5,6 @@ import torch
 import torchaudio
 
 
-
 class DatasetResamplerCropper:
     """
     Resample and optionally crop a waveform.

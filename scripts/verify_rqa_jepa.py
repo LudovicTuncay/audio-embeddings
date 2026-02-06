@@ -8,20 +8,42 @@ sys.path.append(os.getcwd())
 
 from src.models.rqa_jepa_module import RQAJEPAModule
 
+
 def verify_rqa_jepa():
     print("Verifying RQA-JEPA Implementation...")
 
     # Mock Net Config
     net_config = {
         "spectrogram": {},
-        "patch_embed": {"img_size": (1024, 128), "patch_size": (16, 16), "in_chans": 1, "embed_dim": 768},
-        "masking": {"input_size": (64, 8), "mask_ratio": (0.4, 0.6)}, # approx grid size for 1024x128
-        "encoder": {"img_size": (1024, 128), "patch_size": (16, 16), "embed_dim": 768, "depth": 2, "num_heads": 4},
-        "predictor": {"img_size": (1024, 128), "patch_size": (16, 16), "embed_dim": 384, "depth": 1, "num_heads": 4}
+        "patch_embed": {
+            "img_size": (1024, 128),
+            "patch_size": (16, 16),
+            "in_chans": 1,
+            "embed_dim": 768,
+        },
+        "masking": {
+            "input_size": (64, 8),
+            "mask_ratio": (0.4, 0.6),
+        },  # approx grid size for 1024x128
+        "encoder": {
+            "img_size": (1024, 128),
+            "patch_size": (16, 16),
+            "embed_dim": 768,
+            "depth": 2,
+            "num_heads": 4,
+        },
+        "predictor": {
+            "img_size": (1024, 128),
+            "patch_size": (16, 16),
+            "embed_dim": 384,
+            "depth": 1,
+            "num_heads": 4,
+        },
     }
-    
+
     # Mock Optimizer
-    optimizer_partial = lambda params: torch.optim.Adam(params)
+    def optimizer_partial(params):
+        return torch.optim.Adam(params)
 
     # --- Mode 1: Teacher Input ---
     print("\n--- Verifying RQA-JEPA (Mode: teacher) ---")
@@ -32,11 +54,11 @@ def verify_rqa_jepa():
         rq_criterion=nn.CrossEntropyLoss(),
         rq_input_type="teacher",
         codebook_dim=16,
-        vocab_size=100
+        vocab_size=100,
     )
 
     # Mock input data
-    B, C, T = 2, 1, 16000 # 1 second audio
+    B, C, T = 2, 1, 16000  # 1 second audio
     waveform = torch.rand(B, C, T)
     batch = {"waveform": waveform}
 
@@ -59,7 +81,7 @@ def verify_rqa_jepa():
         rq_criterion=nn.CrossEntropyLoss(),
         rq_input_type="spectrogram",
         codebook_dim=16,
-        vocab_size=100
+        vocab_size=100,
     )
     model_spec.to("cpu")
 
@@ -70,6 +92,7 @@ def verify_rqa_jepa():
     assert loss_spec.ndim == 0
 
     print("\nVerification Passed!")
+
 
 if __name__ == "__main__":
     verify_rqa_jepa()

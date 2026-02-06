@@ -1,6 +1,6 @@
 import rootutils
 import hydra
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig
 import lightning as L
 import torch
 from pathlib import Path
@@ -10,9 +10,10 @@ from typing import List, Dict, Any
 # Setup root
 root = rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 
-from src.utils import instantiate_callbacks, instantiate_loggers, RankedLogger, extras
+from src.utils import instantiate_callbacks, instantiate_loggers, RankedLogger, extras  # noqa: E402
 
 log = RankedLogger(__name__, rank_zero_only=True)
+
 
 @hydra.main(version_base="1.3", config_path="../configs", config_name="train.yaml")
 def main(cfg: DictConfig) -> Dict[str, Any]:
@@ -45,7 +46,9 @@ def main(cfg: DictConfig) -> Dict[str, Any]:
             config_tree_path = Path(cfg.paths.output_dir, "config_tree.log")
             if config_tree_path.exists():
                 log.info("Logging config tree to WandB...")
-                lg.experiment.save(str(config_tree_path), policy="now", base_path=cfg.paths.output_dir)
+                lg.experiment.save(
+                    str(config_tree_path), policy="now", base_path=cfg.paths.output_dir
+                )
 
             # Upload .hydra folder contents
             hydra_dir = Path(cfg.paths.output_dir, ".hydra")
@@ -53,7 +56,11 @@ def main(cfg: DictConfig) -> Dict[str, Any]:
                 log.info("Logging .hydra folder to WandB...")
                 for hydra_file in hydra_dir.iterdir():
                     if hydra_file.is_file():
-                        lg.experiment.save(str(hydra_file), policy="now", base_path=cfg.paths.output_dir)
+                        lg.experiment.save(
+                            str(hydra_file),
+                            policy="now",
+                            base_path=cfg.paths.output_dir,
+                        )
 
     log.info(f"Instantiating trainer <{cfg.trainer._target_}>")
     trainer: L.Trainer = hydra.utils.instantiate(
@@ -84,6 +91,7 @@ def main(cfg: DictConfig) -> Dict[str, Any]:
         trainer.test(model=model, datamodule=datamodule, ckpt_path=ckpt_path)
 
     return object_dict
+
 
 if __name__ == "__main__":
     main()

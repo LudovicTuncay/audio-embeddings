@@ -1,6 +1,7 @@
 import torch
 import sys
 
+
 def inspect_checkpoint(path):
     print(f"Inspecting {path}")
     try:
@@ -10,12 +11,13 @@ def inspect_checkpoint(path):
             print("Optimizer states found: YES")
         else:
             print("Optimizer states found: NO")
-        
+
         if "state_dict" in ckpt:
             print(f"Model keys: {len(ckpt['state_dict'])} items")
-            
+
     except Exception as e:
         print(f"Error loading checkpoint: {e}")
+
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:

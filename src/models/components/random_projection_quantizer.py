@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.linalg import vector_norm
+
 
 class RandomProjectionQuantizer(nn.Module):
     """Vector quantization using a projection and a randomly initialised codebook
