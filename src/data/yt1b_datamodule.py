@@ -137,9 +137,9 @@ class YT1BDataModule(L.LightningDataModule):
     def __init__(
         self,
         data_dir: str = "data/YT-Temporal-1B",
-        train_parquet: str = "train.parquet",
-        val_parquet: str = "val.parquet",
-        test_parquet: str = "test.parquet",
+        train_parquet: str = "train_metadata.parquet",
+        val_parquet: str = "val_metadata.parquet",
+        test_parquet: str = "val_metadata.parquet",
         batch_size: int = 64,
         num_workers: int = 4,
         pin_memory: bool = True,
