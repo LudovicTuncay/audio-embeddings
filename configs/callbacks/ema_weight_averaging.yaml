@@ -1,0 +1,9 @@
+ema_weight_averaging:
+  _target_: src.callbacks.ema_weight_averaging.WarmupEMAWeightAveraging
+  warmup_pct: ${model.warmup_pct}
+  enabled: ${model.ema.enabled}
+  decay: ${model.ema.decay} # decay rate is 1 - decay_numerator / ( total_steps - warmup_steps )
+  decay_numerator: ${model.ema.decay_numerator} # decay rate is 1 - decay_numerator / ( total_steps - warmup_steps )
+  update_every_n_steps: ${model.ema.update_every_n_steps}
+  use_buffers: ${model.ema.use_buffers}
+  update_starting_at_step: null

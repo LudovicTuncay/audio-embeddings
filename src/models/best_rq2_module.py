@@ -1,15 +1,16 @@
+import functools
+from typing import Any, Dict, Optional, Tuple
+
+import lightning as L
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import functools
-import lightning as L
-from typing import Any, Dict, Tuple, Optional
 
-from src.models.components.spectrogram import Spectrogram
 from src.models.components.masking import MaskingGenerator
 from src.models.components.patch_embed import PatchEmbed
-from src.models.components.vit import ViT
 from src.models.components.random_projection_quantizer import RandomProjectionQuantizer
+from src.models.components.spectrogram import Spectrogram
+from src.models.components.vit import ViT
 from src.utils.lr_schedulers import LinearWarmupCosineDecay
 
 
@@ -31,6 +32,7 @@ class BestRQ2Module(L.LightningModule):
         codebook_dim (int): Codebook dimension for RandomProjectionQuantizer.
         vocab_size (int): Vocabulary size for RandomProjectionQuantizer.
         criterion (torch.nn.Module): Loss function (defaults to CrossEntropyLoss).
+        ema (Optional[Dict[str, Any]]): Optional EMA callback config block.
     """
 
     def __init__(
@@ -43,16 +45,18 @@ class BestRQ2Module(L.LightningModule):
         codebook_dim: int = 16,
         vocab_size: int = 8192,
         criterion: Optional[torch.nn.Module] = None,
+        ema: Optional[Dict[str, Any]] = None,
     ):
         super().__init__()
         self.save_hyperparameters(
-            logger=False, ignore=["criterion", "net", "optimizer"]
+            logger=False, ignore=["criterion", "net", "optimizer", "ema"]
         )
 
         self.warmup_pct = warmup_pct
         self.final_lr_ratio = final_lr_ratio
         self.spectrogram_adjustment_mode = spectrogram_adjustment_mode
         self.vocab_size = vocab_size
+        self.ema_config = ema or {}
 
         # Optimizer partial
         self.optimizer_config = optimizer
