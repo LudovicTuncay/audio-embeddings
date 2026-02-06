@@ -11,7 +11,7 @@ TEMPLATE = """#!/bin/bash
 #SBATCH --job-name={job_name}
 #SBATCH --account=ojz@h100
 #SBATCH --constraint=h100
-#SBATCH --qos=qos_gpu_h100-t4
+#SBATCH --qos={qos}
 #SBATCH --time={time}
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node={gpus}
@@ -97,6 +97,24 @@ def format_timedelta(td):
 def parse_config_value(content, pattern):
     match = re.search(pattern, content)
     return match.group(1).strip() if match else None
+
+
+def select_qos(time_limit: timedelta) -> str:
+    two_hours = timedelta(hours=2)
+    twenty_hours = timedelta(hours=20)
+    one_hundred_hours = timedelta(hours=100)
+
+    if time_limit <= two_hours:
+        return "qos_gpu_h100-dev"
+    if time_limit <= twenty_hours:
+        return "qos_gpu_h100-t3"
+    if time_limit <= one_hundred_hours:
+        return "qos_gpu_h100-t4"
+
+    raise ValueError(
+        "Requested time exceeds maximum supported QoS window (100h). "
+        "Please request 100:00:00 or less."
+    )
 
 
 def format_steps(steps_str):
@@ -230,9 +248,10 @@ def main():
     # Use WandB name as Job Name (consistent naming)
     job_name = wandb_name
 
-    # 3. Calculate Trainer Max Time (Time - 10 minutes)
+    # 3. Select QoS and calculate Trainer Max Time (Time - 10 minutes)
     try:
         slurm_time_td = parse_slurm_time(args.time)
+        qos = select_qos(slurm_time_td)
         buffer_time = timedelta(minutes=10)
 
         # Ensure we don't go negative
@@ -246,14 +265,12 @@ def main():
 
         max_time_str = format_timedelta(max_time_td)
     except Exception as e:
-        print(
-            f"Warning: Could not parse time '{args.time}'. Using original string for max_time. Error: {e}"
-        )
-        max_time_str = args.time
+        raise ValueError(f"Invalid --time value '{args.time}': {e}") from e
 
     # 4. Fill Template
     script_content = TEMPLATE.format(
         job_name=job_name,
+        qos=qos,
         time=args.time,
         gpus=args.gpus,
         workdir=workdir,
