@@ -1,0 +1,12 @@
+_target_: src.data.yt1b_datamodule.YT1BDataModule
+data_dir: ${paths.data_dir}/YT-Temporal-1B
+batch_size: 64
+num_workers: 4
+pin_memory: True
+train_parquet: train.parquet
+val_parquet: val.parquet
+test_parquet: test.parquet
+max_audio_length_sec: 10.0
+min_duration_sec: 2.0
+target_sample_rate: 16000
+collate_mode: pad
