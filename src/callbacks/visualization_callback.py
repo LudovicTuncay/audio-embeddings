@@ -47,18 +47,7 @@ class VisualizationCallback(Callback):
 
         waveform = batch["waveform"][: self.num_samples]  # [B, 1, T]
 
-        # Get sample rate dynamically
-        sample_rate = 32000  # Default
-        if hasattr(pl_module, "spectrogram") and hasattr(
-            pl_module.spectrogram, "sample_rate"
-        ):
-            sample_rate = pl_module.spectrogram.sample_rate
-        elif (
-            hasattr(pl_module, "hparams")
-            and "net" in pl_module.hparams
-            and "spectrogram" in pl_module.hparams.net
-        ):
-            sample_rate = pl_module.hparams.net["spectrogram"].get("sample_rate", 32000)
+        sample_rate = self._resolve_sample_rate(trainer, pl_module)
 
         # Get spectrograms
         with torch.no_grad():
@@ -130,6 +119,41 @@ class VisualizationCallback(Callback):
         # Log Table
         table = wandb.Table(columns=columns, data=data)
         logger.experiment.log({f"train/visualizations_batch_{batch_idx}": table})
+
+    @staticmethod
+    def _resolve_sample_rate(trainer: L.Trainer, pl_module: L.LightningModule) -> int:
+        """Resolve audio logging sample rate, preferring data target sample rate."""
+        sample_rate = 32000
+
+        datamodule = getattr(trainer, "datamodule", None)
+        if datamodule is not None:
+            dm_sr = getattr(datamodule, "target_sample_rate", None)
+            if dm_sr is None and hasattr(datamodule, "hparams"):
+                hparams = datamodule.hparams
+                if isinstance(hparams, dict):
+                    dm_sr = hparams.get("target_sample_rate")
+                else:
+                    dm_sr = getattr(hparams, "target_sample_rate", None)
+
+            if dm_sr is not None:
+                return int(dm_sr)
+
+        spectrogram = getattr(pl_module, "spectrogram", None)
+        module_sr = getattr(spectrogram, "sample_rate", None)
+        if module_sr is not None:
+            return int(module_sr)
+
+        hparams = getattr(pl_module, "hparams", None)
+        if isinstance(hparams, dict):
+            net_cfg = hparams.get("net")
+            if isinstance(net_cfg, dict):
+                spectrogram_cfg = net_cfg.get("spectrogram")
+                if isinstance(spectrogram_cfg, dict):
+                    config_sr = spectrogram_cfg.get("sample_rate")
+                    if config_sr is not None:
+                        return int(config_sr)
+
+        return sample_rate
 
     def _plot_spectrogram(
         self, spec: np.ndarray, patch_size: tuple[int, int], grid_size: tuple[int, int]
