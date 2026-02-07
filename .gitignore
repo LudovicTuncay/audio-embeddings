@@ -17,3 +17,6 @@ logs/
 
 # Data
 data/
+
+# Jupyter
+.ipynb_checkpoints/
