@@ -3,6 +3,7 @@ from functools import partial
 from typing import Any, Dict, List, Optional, Union
 
 import lightning as L
+import numpy as np
 import pandas as pd
 import torch
 import torchaudio
@@ -21,6 +22,8 @@ class YT1BDataset(Dataset):
         transform (Optional[callable]): Optional transform to apply to the waveform.
         max_length (Optional[int]): Maximum length of the waveform in samples (at target_sample_rate).
         target_sample_rate (int): Target sample rate for the waveform. Defaults to 16000.
+        decode_window_sec (Optional[float]): Optional decode window length in seconds. If None,
+            defaults to max_length / target_sample_rate (when max_length is set).
     """
 
     def __init__(
@@ -30,11 +33,13 @@ class YT1BDataset(Dataset):
         transform: Optional[Any] = None,
         max_length: Optional[int] = None,
         target_sample_rate: int = 16000,
+        decode_window_sec: Optional[float] = None,
     ):
         print(f"Loading metadata from {parquet_path}...")
         self.transform = transform
         self.max_length = max_length
         self.target_sample_rate = target_sample_rate
+        self.decode_window_sec = decode_window_sec
 
         # --- Metadata Loading ---
         if not os.path.exists(parquet_path):
@@ -61,6 +66,7 @@ class YT1BDataset(Dataset):
 
         self.ids = df["video_id"].tolist()
         self.paths = df["file_path"].tolist()
+        self.durations_sec = df["duration_sec"].tolist()
         self.length = len(self.ids)
 
         # --- Resampler ---
@@ -80,8 +86,35 @@ class YT1BDataset(Dataset):
 
         # Load waveform
         try:
-            # torchaudio.load returns (waveform, sample_rate)
-            waveform, sr = torchaudio.load(audio_path)
+            decode_window_sec = self.decode_window_sec
+            if decode_window_sec is None and self.max_length is not None:
+                decode_window_sec = self.max_length / self.target_sample_rate
+
+            if decode_window_sec is None:
+                waveform, sr = torchaudio.load(audio_path)
+            else:
+                duration_sec = float(self.durations_sec[idx])
+                if duration_sec <= 0:
+                    waveform, sr = torchaudio.load(audio_path)
+                else:
+                    _, source_sr = torchaudio.load(
+                        audio_path, frame_offset=0, num_frames=1
+                    )
+                    total_frames = max(1, int(duration_sec * source_sr))
+                    max_decode_frames = max(1, int(decode_window_sec * source_sr))
+                    decode_frames = min(max_decode_frames, total_frames)
+
+                    if total_frames > decode_frames:
+                        max_start = total_frames - decode_frames
+                        frame_offset = int(np.random.randint(0, max_start + 1))
+                    else:
+                        frame_offset = 0
+
+                    waveform, sr = torchaudio.load(
+                        audio_path,
+                        frame_offset=frame_offset,
+                        num_frames=decode_frames,
+                    )
         except Exception as e:
             print(f"Error loading {audio_path}: {e}")
             # Return a dummy silent waveform to prevent crash
@@ -132,6 +165,8 @@ class YT1BDataModule(L.LightningDataModule):
         min_duration_sec (Optional[float]): Minimum audio duration in seconds to filter.
         target_sample_rate (int): Target sample rate.
         collate_mode (str): 'pad' or 'truncate'.
+        decode_window_sec (Optional[float]): Optional decode window length in seconds. If None,
+            defaults to max_audio_length_sec.
     """
 
     def __init__(
@@ -147,6 +182,7 @@ class YT1BDataModule(L.LightningDataModule):
         min_duration_sec: Optional[float] = None,
         target_sample_rate: int = 16000,
         collate_mode: str = "pad",
+        decode_window_sec: Optional[float] = None,
     ):
         super().__init__()
         self.save_hyperparameters()
@@ -170,26 +206,29 @@ class YT1BDataModule(L.LightningDataModule):
             if os.path.exists(self.train_parquet_path):
                 self.train_dataset = YT1BDataset(
                     self.train_parquet_path,
-                    min_duration=self.hparams.min_duration_sec,
+                    min_duration=self.hparams["min_duration_sec"],
                     max_length=self.max_audio_length,
-                    target_sample_rate=self.hparams.target_sample_rate,
+                    target_sample_rate=self.hparams["target_sample_rate"],
+                    decode_window_sec=self.hparams["decode_window_sec"],
                 )
 
             if os.path.exists(self.val_parquet_path):
                 self.val_dataset = YT1BDataset(
                     self.val_parquet_path,
-                    min_duration=self.hparams.min_duration_sec,
+                    min_duration=self.hparams["min_duration_sec"],
                     max_length=self.max_audio_length,
-                    target_sample_rate=self.hparams.target_sample_rate,
+                    target_sample_rate=self.hparams["target_sample_rate"],
+                    decode_window_sec=self.hparams["decode_window_sec"],
                 )
 
         if stage == "test":
             if os.path.exists(self.test_parquet_path):
                 self.test_dataset = YT1BDataset(
                     self.test_parquet_path,
-                    min_duration=self.hparams.min_duration_sec,
+                    min_duration=self.hparams["min_duration_sec"],
                     max_length=self.max_audio_length,
-                    target_sample_rate=self.hparams.target_sample_rate,
+                    target_sample_rate=self.hparams["target_sample_rate"],
+                    decode_window_sec=self.hparams["decode_window_sec"],
                 )
 
     def train_dataloader(self) -> DataLoader:
@@ -199,12 +238,12 @@ class YT1BDataModule(L.LightningDataModule):
             )
         return DataLoader(
             self.train_dataset,
-            batch_size=self.hparams.batch_size,
+            batch_size=self.hparams["batch_size"],
             shuffle=True,
-            num_workers=self.hparams.num_workers,
-            pin_memory=self.hparams.pin_memory,
-            persistent_workers=self.hparams.num_workers > 0,
-            collate_fn=partial(self.collate_fn, mode=self.hparams.collate_mode),
+            num_workers=self.hparams["num_workers"],
+            pin_memory=self.hparams["pin_memory"],
+            persistent_workers=self.hparams["num_workers"] > 0,
+            collate_fn=partial(self.collate_fn, mode=self.hparams["collate_mode"]),
         )
 
     def val_dataloader(self) -> DataLoader:
@@ -218,12 +257,12 @@ class YT1BDataModule(L.LightningDataModule):
 
         return DataLoader(
             self.val_dataset,
-            batch_size=self.hparams.batch_size,
+            batch_size=self.hparams["batch_size"],
             shuffle=False,
-            num_workers=self.hparams.num_workers,
-            pin_memory=self.hparams.pin_memory,
-            persistent_workers=self.hparams.num_workers > 0,
-            collate_fn=partial(self.collate_fn, mode=self.hparams.collate_mode),
+            num_workers=self.hparams["num_workers"],
+            pin_memory=self.hparams["pin_memory"],
+            persistent_workers=self.hparams["num_workers"] > 0,
+            collate_fn=partial(self.collate_fn, mode=self.hparams["collate_mode"]),
         )
 
     def test_dataloader(self) -> DataLoader:
@@ -234,11 +273,11 @@ class YT1BDataModule(L.LightningDataModule):
 
         return DataLoader(
             self.test_dataset,
-            batch_size=self.hparams.batch_size,
+            batch_size=self.hparams["batch_size"],
             shuffle=False,
-            num_workers=self.hparams.num_workers,
-            pin_memory=self.hparams.pin_memory,
-            collate_fn=partial(self.collate_fn, mode=self.hparams.collate_mode),
+            num_workers=self.hparams["num_workers"],
+            pin_memory=self.hparams["pin_memory"],
+            collate_fn=partial(self.collate_fn, mode=self.hparams["collate_mode"]),
         )
 
     @staticmethod

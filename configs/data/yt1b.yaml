@@ -10,3 +10,4 @@ max_audio_length_sec: 10.0
 min_duration_sec: 10.0
 target_sample_rate: 16000
 collate_mode: pad
+decode_window_sec: null
