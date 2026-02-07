@@ -1,6 +1,9 @@
 import argparse
 from collections import defaultdict
 from collections.abc import Iterable
+from dataclasses import dataclass
+import statistics
+import time
 
 import pandas as pd
 from rich.progress import BarColumn
@@ -20,13 +23,54 @@ def identity_collate(batch: list[dict]) -> list[dict]:
     return batch
 
 
+@dataclass
+class SplitScanStats:
+    processed_samples: int
+    error_samples: int
+    unique_bad_paths: int
+    num_batches: int
+    elapsed_sec: float
+    mean_batch_sec: float
+    p50_batch_sec: float
+    p90_batch_sec: float
+    p99_batch_sec: float
+
+    @property
+    def samples_per_sec(self) -> float:
+        if self.elapsed_sec <= 0:
+            return 0.0
+        return self.processed_samples / self.elapsed_sec
+
+    @property
+    def error_rate(self) -> float:
+        if self.processed_samples == 0:
+            return 0.0
+        return self.error_samples / self.processed_samples
+
+
+def percentile(values: list[float], q: float) -> float:
+    if not values:
+        return 0.0
+
+    sorted_vals = sorted(values)
+    if len(sorted_vals) == 1:
+        return sorted_vals[0]
+
+    q_clamped = max(0.0, min(1.0, q))
+    idx = q_clamped * (len(sorted_vals) - 1)
+    low = int(idx)
+    high = min(low + 1, len(sorted_vals) - 1)
+    weight = idx - low
+    return sorted_vals[low] * (1.0 - weight) + sorted_vals[high] * weight
+
+
 def scan_split_for_failures(
     split_name: str,
     dataset: YT1BDataset,
     batch_size: int,
     num_workers: int,
     pin_memory: bool,
-) -> set[str]:
+) -> tuple[set[str], SplitScanStats]:
     dataloader = DataLoader(
         dataset,
         batch_size=batch_size,
@@ -38,6 +82,12 @@ def scan_split_for_failures(
     )
 
     bad_paths: set[str] = set()
+    batch_latencies: list[float] = []
+    processed_samples = 0
+    error_samples = 0
+    num_batches = 0
+    start_time = time.perf_counter()
+
     with Progress(
         TextColumn("[bold cyan]{task.description}"),
         BarColumn(),
@@ -48,14 +98,50 @@ def scan_split_for_failures(
     ) as progress:
         task_id = progress.add_task(f"Scanning {split_name}", total=len(dataset))
 
-        for batch in dataloader:
+        dataloader_iter = iter(dataloader)
+        while True:
+            batch_start = time.perf_counter()
+            try:
+                batch = next(dataloader_iter)
+            except StopIteration:
+                break
+
+            fetch_and_process_sec = time.perf_counter() - batch_start
             for sample in batch:
+                processed_samples += 1
                 if sample.get("error", False):
+                    error_samples += 1
                     sample_index = int(sample["index"])
                     bad_paths.add(dataset.paths[sample_index])
-                progress.advance(task_id, 1)
+            num_batches += 1
+            batch_latencies.append(fetch_and_process_sec)
+            progress.advance(task_id, len(batch))
 
-    return bad_paths
+    elapsed_sec = time.perf_counter() - start_time
+    if batch_latencies:
+        mean_batch_sec = statistics.fmean(batch_latencies)
+        p50_batch_sec = percentile(batch_latencies, 0.50)
+        p90_batch_sec = percentile(batch_latencies, 0.90)
+        p99_batch_sec = percentile(batch_latencies, 0.99)
+    else:
+        mean_batch_sec = 0.0
+        p50_batch_sec = 0.0
+        p90_batch_sec = 0.0
+        p99_batch_sec = 0.0
+
+    stats = SplitScanStats(
+        processed_samples=processed_samples,
+        error_samples=error_samples,
+        unique_bad_paths=len(bad_paths),
+        num_batches=num_batches,
+        elapsed_sec=elapsed_sec,
+        mean_batch_sec=mean_batch_sec,
+        p50_batch_sec=p50_batch_sec,
+        p90_batch_sec=p90_batch_sec,
+        p99_batch_sec=p99_batch_sec,
+    )
+
+    return bad_paths, stats
 
 
 def clean_parquet_file(
@@ -152,6 +238,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Only report removals without modifying parquet files.",
     )
+    parser.add_argument(
+        "--profile",
+        action="store_true",
+        help="Print detailed throughput and latency metrics per split.",
+    )
 
     return parser.parse_args()
 
@@ -183,13 +274,14 @@ def main() -> None:
 
     bad_paths_by_parquet: dict[str, set[str]] = defaultdict(set)
     bad_counts_by_split: dict[str, int] = {}
+    stats_by_split: dict[str, SplitScanStats] = {}
 
     for split_name, dataset, parquet_path in split_specs:
         if dataset is None:
             print(f"Skipping {split_name}: parquet not found at {parquet_path}")
             continue
 
-        bad_paths = scan_split_for_failures(
+        bad_paths, stats = scan_split_for_failures(
             split_name=split_name,
             dataset=dataset,
             batch_size=args.batch_size,
@@ -197,12 +289,55 @@ def main() -> None:
             pin_memory=args.pin_memory,
         )
         bad_counts_by_split[split_name] = len(bad_paths)
+        stats_by_split[split_name] = stats
         bad_paths_by_parquet[parquet_path].update(bad_paths)
 
     print("\nFailure counts by split:")
     for split_name in ["train", "val", "test"]:
         if split_name in bad_counts_by_split:
             print(f"- {split_name}: {bad_counts_by_split[split_name]}")
+
+    if args.profile:
+        print("\nProfile report:")
+        for split_name in ["train", "val", "test"]:
+            if split_name not in stats_by_split:
+                continue
+
+            stats = stats_by_split[split_name]
+            print(
+                f"- {split_name}: {stats.processed_samples} samples in "
+                f"{stats.elapsed_sec:.1f}s ({stats.samples_per_sec:.2f} samples/s), "
+                f"errors={stats.error_samples} ({100.0 * stats.error_rate:.2f}%), "
+                f"unique_bad={stats.unique_bad_paths}, batches={stats.num_batches}"
+            )
+            print(
+                f"  batch latency (s): mean={stats.mean_batch_sec:.4f}, "
+                f"p50={stats.p50_batch_sec:.4f}, p90={stats.p90_batch_sec:.4f}, "
+                f"p99={stats.p99_batch_sec:.4f}"
+            )
+
+        if stats_by_split:
+            total_processed = sum(
+                split_stats.processed_samples for split_stats in stats_by_split.values()
+            )
+            total_elapsed = sum(
+                split_stats.elapsed_sec for split_stats in stats_by_split.values()
+            )
+            total_errors = sum(
+                split_stats.error_samples for split_stats in stats_by_split.values()
+            )
+            aggregate_sps = (
+                total_processed / total_elapsed if total_elapsed > 0 else 0.0
+            )
+            aggregate_error_rate = (
+                total_errors / total_processed if total_processed > 0 else 0.0
+            )
+            print(
+                "\nAggregate: "
+                f"{total_processed} samples in {total_elapsed:.1f}s "
+                f"({aggregate_sps:.2f} samples/s), "
+                f"errors={total_errors} ({100.0 * aggregate_error_rate:.2f}%)"
+            )
 
     print("\nUpdating parquet files...")
     total_removed = 0
