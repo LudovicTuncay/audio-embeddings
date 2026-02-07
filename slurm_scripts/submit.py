@@ -34,11 +34,11 @@ module load {ffmpeg_module}
 FFMPEG_BIN=$(command -v ffmpeg || true)
 if [ -n "$FFMPEG_BIN" ]; then
     FFMPEG_ROOT=$(dirname "$(dirname "$FFMPEG_BIN")")
-    export LD_LIBRARY_PATH="${FFMPEG_ROOT}/lib:${{LD_LIBRARY_PATH}}"
+    export LD_LIBRARY_PATH="${{FFMPEG_ROOT}}/lib:${{LD_LIBRARY_PATH}}"
 fi
 
-if [ -n "${EBROOTFFMPEG:-}" ]; then
-    export LD_LIBRARY_PATH="${EBROOTFFMPEG}/lib:${{LD_LIBRARY_PATH}}"
+if [ -n "${{EBROOTFFMPEG:-}}" ]; then
+    export LD_LIBRARY_PATH="${{EBROOTFFMPEG}}/lib:${{LD_LIBRARY_PATH}}"
 fi
 
 cd {workdir}
