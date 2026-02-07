@@ -21,15 +21,24 @@ TEMPLATE = """#!/bin/bash
 #SBATCH --output=logs/slurm/%x-%j.log
 #SBATCH --error=logs/slurm/%x-%j.log
 
-set -x
+set -euxo pipefail
 
 export MPLBACKEND=Agg
+
+if ! command -v module >/dev/null 2>&1; then
+    source /etc/profile.d/modules.sh || true
+fi
 
 module load {ffmpeg_module}
 
 FFMPEG_BIN=$(command -v ffmpeg || true)
 if [ -n "$FFMPEG_BIN" ]; then
-    export LD_LIBRARY_PATH="$(dirname "$(dirname "$FFMPEG_BIN")")/lib:${{LD_LIBRARY_PATH}}"
+    FFMPEG_ROOT=$(dirname "$(dirname "$FFMPEG_BIN")")
+    export LD_LIBRARY_PATH="${FFMPEG_ROOT}/lib:${{LD_LIBRARY_PATH}}"
+fi
+
+if [ -n "${EBROOTFFMPEG:-}" ]; then
+    export LD_LIBRARY_PATH="${EBROOTFFMPEG}/lib:${{LD_LIBRARY_PATH}}"
 fi
 
 cd {workdir}
@@ -56,6 +65,8 @@ source .venv/bin/activate
 
 echo "Starting job {job_name} on $(hostname)"
 echo "Experiment: {experiment}"
+echo "FFmpeg binary: $(command -v ffmpeg || echo 'not found')"
+ffmpeg -version | head -n 1
 
 srun .venv/bin/python -u -O src/train.py \\
     experiment={experiment} \\
