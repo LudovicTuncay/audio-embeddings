@@ -91,7 +91,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--data-dir",
         type=str,
-        default="/lustre/fsmisc/dataset/YT-Temporal-1B",
+        default="/lustre/fswork/projects/rech/ojz/umz91bs/audio-embeddings/data/YT-Temporal-1B/",
         help="Root directory containing the parquet metadata files.",
     )
     parser.add_argument(
