@@ -4,10 +4,12 @@ from collections.abc import Iterable
 
 import pandas as pd
 from rich.progress import BarColumn
+from rich.progress import MofNCompleteColumn
 from rich.progress import Progress
 from rich.progress import TaskProgressColumn
 from rich.progress import TextColumn
 from rich.progress import TimeElapsedColumn
+from rich.progress import TimeRemainingColumn
 from torch.utils.data import DataLoader
 
 from src.data.yt1b_datamodule import YT1BDataModule
@@ -39,7 +41,9 @@ def scan_split_for_failures(
     with Progress(
         TextColumn("[bold cyan]{task.description}"),
         BarColumn(),
+        MofNCompleteColumn(),
         TaskProgressColumn(),
+        TimeRemainingColumn(),
         TimeElapsedColumn(),
     ) as progress:
         task_id = progress.add_task(f"Scanning {split_name}", total=len(dataset))
@@ -67,7 +71,7 @@ def clean_parquet_file(
             f"Parquet file must contain 'file_path' column: {parquet_path}"
         )
 
-    bad_mask = df["file_path"].isin(bad_paths_set)
+    bad_mask = df["file_path"].isin(list(bad_paths_set))
     removed = int(bad_mask.sum())
 
     if removed > 0 and not dry_run:
