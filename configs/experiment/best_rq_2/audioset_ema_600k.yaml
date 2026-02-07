@@ -1,0 +1,38 @@
+# @package _global_
+
+# to execute this experiment run:
+# python train.py experiment=best_rq_2/audioset_ema_600k
+
+defaults:
+  - /callbacks/ema_weight_averaging
+  - override /data: audioset
+  - override /model: best_rq2
+  - override /trainer: gpu
+  - override /logger: wandb
+
+tags: ["audioset", "best-rq-2", "ema", "600k", "cluster GPU"]
+
+trainer:
+  max_steps: 600000
+
+data:
+  batch_size: 256
+  num_workers: ${oc.decode:${oc.env:SLURM_CPUS_PER_TASK}}
+
+logger:
+  wandb:
+    offline: True
+    log_model: False
+
+callbacks:
+  model_checkpoint:
+
+  rich_progress_bar: null
+
+  wandb_offline_checkpoint:
+    _target_: src.callbacks.wandb_callbacks.WandbOfflineCheckpointCallback
+
+model:
+  ema:
+    enabled: true
+    decay_numerator: 40.0
