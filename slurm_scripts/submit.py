@@ -25,6 +25,13 @@ set -x
 
 export MPLBACKEND=Agg
 
+module load {ffmpeg_module}
+
+FFMPEG_BIN=$(command -v ffmpeg || true)
+if [ -n "$FFMPEG_BIN" ]; then
+    export LD_LIBRARY_PATH="$(dirname "$(dirname "$FFMPEG_BIN")")/lib:${{LD_LIBRARY_PATH}}"
+fi
+
 cd {workdir}
 
 export PYTHONUNBUFFERED=1
@@ -45,6 +52,7 @@ source .venv/bin/activate
 # Strategy: {strategy}
 # WandB Name: {wandb_name}
 # Trainer Max Time: {max_time}
+# FFmpeg module: {ffmpeg_module}
 
 echo "Starting job {job_name} on $(hostname)"
 echo "Experiment: {experiment}"
@@ -205,6 +213,15 @@ def main():
         action="store_true",
         help="Print the generated script without submitting",
     )
+    parser.add_argument(
+        "--ffmpeg-module",
+        type=str,
+        default="ffmpeg/7.1-cuda",
+        help=(
+            "FFmpeg environment module to load in the job script "
+            "(default: ffmpeg/7.1-cuda)."
+        ),
+    )
 
     args, unknown = parser.parse_known_args()
 
@@ -278,6 +295,7 @@ def main():
         strategy=strategy,
         wandb_name=wandb_name,
         max_time=max_time_str,
+        ffmpeg_module=args.ffmpeg_module,
         extra_args=extra_args,
     )
 
