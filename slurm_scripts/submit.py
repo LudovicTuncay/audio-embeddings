@@ -227,10 +227,10 @@ def main():
     parser.add_argument(
         "--ffmpeg-module",
         type=str,
-        default="ffmpeg/7.1-cuda",
+        default="ffmpeg/6.1.1",
         help=(
             "FFmpeg environment module to load in the job script "
-            "(default: ffmpeg/7.1-cuda)."
+            "(default: ffmpeg/6.1.1)."
         ),
     )
 
