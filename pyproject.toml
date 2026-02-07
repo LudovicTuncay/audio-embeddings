@@ -23,4 +23,5 @@ dependencies = [
     "matplotlib>=3.10.7",
     "soundfile>=0.13.1",
     "pyarrow>=23.0.0",
+    "torchcodec>=0.10.0",
 ]
