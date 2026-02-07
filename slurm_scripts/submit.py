@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 import argparse
 import os
-import subprocess
 import re
+import subprocess
 from datetime import datetime, timedelta
 
 # Slurm Script Template
@@ -29,6 +29,7 @@ if ! command -v module >/dev/null 2>&1; then
     source /etc/profile.d/modules.sh || true
 fi
 
+module load arch/h100
 module load {ffmpeg_module}
 
 FFMPEG_BIN=$(command -v ffmpeg || true)
