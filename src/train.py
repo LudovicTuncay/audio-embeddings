@@ -5,6 +5,7 @@ import lightning as L
 import torch
 from pathlib import Path
 from lightning.pytorch.loggers import WandbLogger
+from lightning.pytorch.callbacks import ModelCheckpoint
 from typing import List, Dict, Any
 
 # Setup root
@@ -32,6 +33,27 @@ def main(cfg: DictConfig) -> Dict[str, Any]:
 
     log.info("Instantiating callbacks...")
     callbacks: List[L.Callback] = instantiate_callbacks(cfg.get("callbacks"))
+
+    callbacks_cfg = cfg.get("callbacks")
+    if (
+        isinstance(callbacks_cfg, DictConfig)
+        and "model_checkpoint" in callbacks_cfg
+        and callbacks_cfg.model_checkpoint is None
+    ):
+        log.warning(
+            "`callbacks.model_checkpoint` is null in the composed config. "
+            "Lightning will use its default ModelCheckpoint callback, which may not "
+            "save `last.ckpt` and can change filename conventions. Remove the null "
+            "override or set explicit checkpoint fields in the experiment config."
+        )
+
+    if cfg.get("train") and not any(
+        isinstance(callback, ModelCheckpoint) for callback in callbacks
+    ):
+        log.warning(
+            "No explicit ModelCheckpoint callback was instantiated from config; "
+            "Lightning default checkpointing behavior will be used."
+        )
 
     log.info("Instantiating loggers...")
     logger: List[L.Logger] = instantiate_loggers(cfg.get("logger"))

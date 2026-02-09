@@ -25,8 +25,6 @@ logger:
     log_model: False
 
 callbacks:
-  model_checkpoint:
-
   rich_progress_bar: null
 
   wandb_offline_checkpoint:

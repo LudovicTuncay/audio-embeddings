@@ -27,6 +27,3 @@ logger:
     name: "local-best-rq-vit-audioset-200k-128x1bs"
     offline: False
     log_model: True
-
-callbacks:
-  model_checkpoint:

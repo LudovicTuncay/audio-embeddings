@@ -28,9 +28,6 @@ logger:
     offline: False
     log_model: True
 
-callbacks:
-  model_checkpoint:
-
 model:
   net:
     encoder:

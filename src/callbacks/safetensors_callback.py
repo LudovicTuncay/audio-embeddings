@@ -3,6 +3,7 @@ import glob
 import torch
 from lightning.pytorch.callbacks import Callback
 from lightning.pytorch.utilities import rank_zero_only
+from lightning_utilities.core.rank_zero import rank_zero_warn
 from safetensors.torch import save_file
 
 
@@ -12,6 +13,9 @@ class SafetensorsCallback(Callback):
     This allows for safe sharing of weights while keeping the full .ckpt (with optimizer state)
     local for resuming training.
     """
+
+    def __init__(self, cleanup_orphan_safetensors: bool = False) -> None:
+        self.cleanup_orphan_safetensors = cleanup_orphan_safetensors
 
     @rank_zero_only
     def on_train_epoch_end(self, trainer, pl_module):
@@ -29,6 +33,21 @@ class SafetensorsCallback(Callback):
 
         # Find all .ckpt files
         ckpt_files = glob.glob(os.path.join(dirpath, "*.ckpt"))
+        ckpt_stems = {
+            os.path.splitext(os.path.basename(ckpt_path))[0] for ckpt_path in ckpt_files
+        }
+
+        if self.cleanup_orphan_safetensors:
+            safetensors_files = glob.glob(os.path.join(dirpath, "*.safetensors"))
+            for safetensors_path in safetensors_files:
+                base_name = os.path.splitext(os.path.basename(safetensors_path))[0]
+                if base_name not in ckpt_stems:
+                    try:
+                        os.remove(safetensors_path)
+                    except OSError as exc:
+                        rank_zero_warn(
+                            f"Failed to remove orphan safetensors file {safetensors_path}: {exc}"
+                        )
 
         for ckpt_path in ckpt_files:
             # Construct safetensors path
@@ -70,4 +89,4 @@ class SafetensorsCallback(Callback):
                     save_file(clean_state_dict, sf_path)
 
                 except Exception as e:
-                    print(f"Failed to convert {ckpt_path} to safetensors: {e}")
+                    rank_zero_warn(f"Failed to convert {ckpt_path} to safetensors: {e}")

@@ -16,6 +16,7 @@ model_checkpoint:
 
 safetensors:
   _target_: src.callbacks.safetensors_callback.SafetensorsCallback
+  cleanup_orphan_safetensors: True
 
 # early_stopping:
 #   monitor: "val/loss"
