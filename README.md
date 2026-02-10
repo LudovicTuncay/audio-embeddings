@@ -31,6 +31,11 @@ This project uses [`uv`](https://github.com/astral-sh/uv) for dependency managem
     uv sync
     ```
 
+4.  **Enable shared git hooks** (runs `uv sync` after merge/checkout/rewrite):
+    ```bash
+    git config core.hooksPath .githooks
+    ```
+
 ## 🏃 Usage
 
 ### Basic Training
