@@ -2,6 +2,26 @@ repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
+      # Trim whitespace at end of lines.
+      - id: trailing-whitespace
+      # Ensure files end with a single newline.
+      - id: end-of-file-fixer
+      # Catch unresolved merge conflict markers.
+      - id: check-merge-conflict
+      # Validate YAML syntax (Hydra configs, etc.).
+      - id: check-yaml
+      # Validate TOML syntax (e.g., pyproject.toml).
+      - id: check-toml
+      # Detect mixed CRLF/LF endings without auto-rewriting.
+      - id: mixed-line-ending
+        args: ["--fix=no"]
+      # Catch accidental debug leftovers (breakpoint/pdb).
+      - id: debug-statements
+      # Block accidental private key commits.
+      - id: detect-private-key
+      # Prevent case-colliding paths across filesystems.
+      - id: check-case-conflict
+      # Block newly added large files unless explicitly allowlisted below.
       - id: check-added-large-files
         args: ["--maxkb=5000"]
         exclude: ^(documents/LeJEPA\.pdf|documents/Audio-LeJEPA\.pdf)$

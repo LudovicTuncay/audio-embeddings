@@ -29,7 +29,7 @@ logger:
 
 callbacks:
   rich_progress_bar: null
-  
+
   wandb_offline_checkpoint:
     _target_: src.callbacks.wandb_callbacks.WandbOfflineCheckpointCallback
 
@@ -38,17 +38,17 @@ model:
     spectrogram:
       win_length_ms: 64 # halved
       hop_length_ms: 19.53125 # halved
-    
+
     patch_embed:
       img_size: [128, 512] # width doubled because hop is halved
-      
+
     masking:
       input_size: [128, 512]
-      
+
     encoder:
       num_patches: 256 # (128/16) * (512/16) = 8 * 32 = 256
       img_size: [128, 512] # Explicitly set img_size for ViT to match patch_embed
-      
+
     predictor:
       num_patches: 256
       img_size: [128, 512]

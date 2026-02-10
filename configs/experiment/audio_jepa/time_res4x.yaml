@@ -29,7 +29,7 @@ logger:
 
 callbacks:
   rich_progress_bar: null
-  
+
   wandb_offline_checkpoint:
     _target_: src.callbacks.wandb_callbacks.WandbOfflineCheckpointCallback
 
@@ -38,17 +38,17 @@ model:
     spectrogram:
       win_length_ms: 32 # quartered
       hop_length_ms: 9.765625 # quartered
-    
+
     patch_embed:
       img_size: [128, 1024] # width quadrupled because hop is quartered
-      
+
     masking:
       input_size: [128, 1024]
-      
+
     encoder:
       num_patches: 512 # (128/16) * (1024/16) = 8 * 64 = 512
       img_size: [128, 1024]
-      
+
     predictor:
       num_patches: 512
       img_size: [128, 1024]

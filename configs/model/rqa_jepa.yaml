@@ -39,18 +39,18 @@ net:
     f_min: 0
     f_max: 8000
     power: 2.0
-  
+
   patch_embed:
     img_size: [128, 256]
     patch_size: [16, 16]
     in_chans: 1
     embed_dim: 768
-  
+
   masking:
     input_size: [128, 256]
     patch_size: [16, 16]
     mask_ratio: [0.4, 0.6]
-  
+
   encoder:
     embed_dim: 768
     depth: 12
@@ -62,7 +62,7 @@ net:
     drop_path_rate: 0.1
     num_patches: 128
     pos_embed_type: "sincos"
-  
+
   predictor:
     embed_dim: 768
     depth: 4
