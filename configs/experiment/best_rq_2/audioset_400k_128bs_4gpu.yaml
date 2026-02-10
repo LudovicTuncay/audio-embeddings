@@ -1,0 +1,30 @@
+# @package _global_
+
+# to execute this experiment run:
+# python train.py experiment=best_rq_2/audioset_400k_128bs_4gpu
+
+defaults:
+  - override /data: audioset
+  - override /model: best_rq2
+  - override /trainer: ddp
+  - override /logger: wandb
+
+tags: ["audioset", "best-rq-2", "400k", "128bs", "4GPU", "cluster GPU"]
+
+trainer:
+  max_steps: 400000
+
+data:
+  batch_size: 128
+  num_workers: ${oc.decode:${oc.env:SLURM_CPUS_PER_TASK}}
+
+logger:
+  wandb:
+    offline: True
+    log_model: False
+
+callbacks:
+  rich_progress_bar: null
+
+  wandb_offline_checkpoint:
+    _target_: src.callbacks.wandb_callbacks.WandbOfflineCheckpointCallback
