@@ -20,3 +20,10 @@ data/
 
 # Jupyter
 .ipynb_checkpoints/
+
+# macOS Finder metadata
+.DS_Store
+
+# Explicitly untracked large docs
+documents/LeJEPA.pdf
+documents/Audio-LeJEPA.pdf
