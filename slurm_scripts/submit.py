@@ -71,9 +71,9 @@ ffmpeg -version | head -n 1
 
 srun .venv/bin/python -u -O src/train.py \\
     experiment={experiment} \\
-    trainer.devices={gpus} \\
-    +trainer.strategy={strategy} \\
-    +trainer.max_time="{max_time}" \\
+    ++trainer.devices={gpus} \\
+    ++trainer.strategy={strategy} \\
+    ++trainer.max_time="{max_time}" \\
     ++logger.wandb.name="{wandb_name}" \\
     {extra_args}
 """
@@ -242,7 +242,7 @@ def main():
         strategy = "ddp"
         # Sync BatchNorm is usually recommended for DDP
         # Using +trainer.sync_batchnorm to ensure we append it even if it doesn't exist
-        extra_args_list = ["+trainer.sync_batchnorm=True"]
+        extra_args_list = ["++trainer.sync_batchnorm=True"]
     else:
         strategy = "auto"
         extra_args_list = []
