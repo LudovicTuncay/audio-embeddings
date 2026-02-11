@@ -2,6 +2,8 @@ import argparse
 from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass
+import math
+from pathlib import Path
 import statistics
 import time
 
@@ -70,7 +72,7 @@ def scan_split_for_failures(
     batch_size: int,
     num_workers: int,
     pin_memory: bool,
-) -> tuple[set[str], SplitScanStats]:
+) -> tuple[set[str], SplitScanStats, list[tuple[float, float]]]:
     dataloader = DataLoader(
         dataset,
         batch_size=batch_size,
@@ -83,6 +85,7 @@ def scan_split_for_failures(
 
     bad_paths: set[str] = set()
     batch_latencies: list[float] = []
+    batch_points: list[tuple[float, float]] = []
     processed_samples = 0
     error_samples = 0
     num_batches = 0
@@ -107,14 +110,21 @@ def scan_split_for_failures(
                 break
 
             fetch_and_process_sec = time.perf_counter() - batch_start
+            batch_total_audio_sec = 0.0
             for sample in batch:
                 processed_samples += 1
+                sample_index = int(sample["index"])
+                sample_duration_sec = float(dataset.durations_sec[sample_index])
+                if not math.isfinite(sample_duration_sec) or sample_duration_sec < 0.0:
+                    sample_duration_sec = 0.0
+                batch_total_audio_sec += sample_duration_sec
+
                 if sample.get("error", False):
                     error_samples += 1
-                    sample_index = int(sample["index"])
                     bad_paths.add(dataset.paths[sample_index])
             num_batches += 1
             batch_latencies.append(fetch_and_process_sec)
+            batch_points.append((batch_total_audio_sec, fetch_and_process_sec))
             progress.advance(task_id, len(batch))
 
     elapsed_sec = time.perf_counter() - start_time
@@ -141,7 +151,147 @@ def scan_split_for_failures(
         p99_batch_sec=p99_batch_sec,
     )
 
-    return bad_paths, stats
+    return bad_paths, stats, batch_points
+
+
+def plot_batch_latency_vs_audio_time(
+    points_by_split: dict[str, list[tuple[float, float]]],
+    output_path: str,
+) -> None:
+    if not output_path:
+        return
+
+    all_points = sum((len(points) for points in points_by_split.values()))
+    if all_points == 0:
+        print("Skipping latency plot: no batch points available.")
+        return
+
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        print(
+            "Skipping latency plot: matplotlib is not installed. "
+            "Install it with `uv add matplotlib`."
+        )
+        return
+
+    colors = {
+        "train": "#1f77b4",
+        "val": "#2ca02c",
+        "test": "#ff7f0e",
+    }
+
+    fig, ax = plt.subplots(figsize=(12.5, 7.5), dpi=180)
+    fig.patch.set_facecolor("#f8fafc")
+    ax.set_facecolor("#ffffff")
+    x_values: list[float] = []
+    y_values: list[float] = []
+
+    for split_name in ["train", "val", "test"]:
+        points = points_by_split.get(split_name, [])
+        if not points:
+            continue
+
+        split_points = [
+            point
+            for point in points
+            if math.isfinite(point[0])
+            and math.isfinite(point[1])
+            and point[0] > 0.0
+            and point[1] > 0.0
+        ]
+        if not split_points:
+            continue
+
+        split_x = [point[0] for point in split_points]
+        split_y = [point[1] for point in split_points]
+        x_values.extend(split_x)
+        y_values.extend(split_y)
+        color = colors.get(split_name, "#4c78a8")
+
+        ax.scatter(
+            split_x,
+            split_y,
+            s=16,
+            alpha=0.12,
+            color=color,
+            edgecolors="none",
+            label=f"{split_name} ({len(split_points):,} batches)",
+        )
+
+        unique_audio_lengths = len(set(split_x))
+        num_bins = min(40, unique_audio_lengths, len(split_points))
+        if num_bins >= 2:
+            sorted_points = sorted(split_points, key=lambda point: point[0])
+            bin_size = max(1, len(sorted_points) // num_bins)
+            trend_x: list[float] = []
+            trend_y: list[float] = []
+            for start_idx in range(0, len(sorted_points), bin_size):
+                group = sorted_points[start_idx : start_idx + bin_size]
+                if not group:
+                    continue
+                group_x = [point[0] for point in group]
+                group_y = [point[1] for point in group]
+                trend_x.append(statistics.median(group_x))
+                trend_y.append(statistics.median(group_y))
+
+            ax.plot(
+                trend_x,
+                trend_y,
+                color=color,
+                linewidth=2.6,
+                alpha=0.95,
+            )
+
+    if not x_values or not y_values:
+        print("Skipping latency plot: no valid positive points for log-scale plot.")
+        plt.close(fig)
+        return
+
+    x_min = min(x_values)
+    x_max = max(x_values)
+    y_min = min(y_values)
+    y_max = max(y_values)
+
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.set_xlim(x_min / 1.08, x_max * 1.08)
+    ax.set_ylim(y_min / 1.08, y_max * 1.08)
+
+    ax.set_title(
+        "Batch Processing Time vs. Total Audio Duration (log-log)",
+        fontsize=16,
+        fontweight="bold",
+        color="#0f172a",
+        pad=14,
+    )
+    ax.set_xlabel("Total batch audio duration (seconds)", fontsize=12, color="#1e293b")
+    ax.set_ylabel("Time to process batch (seconds)", fontsize=12, color="#1e293b")
+
+    ax.grid(True, which="major", color="#e2e8f0", linewidth=0.9)
+    ax.grid(True, which="minor", color="#f1f5f9", linewidth=0.6)
+    ax.minorticks_on()
+    for spine in ax.spines.values():
+        spine.set_color("#cbd5e1")
+    ax.tick_params(colors="#334155", labelsize=10)
+
+    legend = ax.legend(
+        loc="upper left",
+        frameon=True,
+        fancybox=True,
+        framealpha=0.95,
+        borderpad=0.7,
+    )
+    legend.get_frame().set_facecolor("#ffffff")
+    legend.get_frame().set_edgecolor("#cbd5e1")
+
+    fig.tight_layout()
+
+    output_file = Path(output_path)
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_file, dpi=220, bbox_inches="tight")
+    plt.close(fig)
+    print(f"Saved latency plot to {output_file}")
 
 
 def clean_parquet_file(
@@ -228,6 +378,12 @@ def parse_args() -> argparse.Namespace:
         help="Optional minimum duration filter (same as datamodule).",
     )
     parser.add_argument(
+        "--max-duration-sec",
+        type=float,
+        default=30.0,
+        help="Optional maximum duration filter (same as datamodule).",
+    )
+    parser.add_argument(
         "--target-sample-rate",
         type=int,
         default=16000,
@@ -242,6 +398,15 @@ def parse_args() -> argparse.Namespace:
         "--profile",
         action="store_true",
         help="Print detailed throughput and latency metrics per split.",
+    )
+    parser.add_argument(
+        "--batch-latency-plot-path",
+        type=str,
+        default="batch_latency_vs_audio_time.png",
+        help=(
+            "Output path for a scatter plot of batch processing time vs total batch "
+            "audio duration. Set to an empty string to disable."
+        ),
     )
 
     return parser.parse_args()
@@ -260,6 +425,7 @@ def main() -> None:
         pin_memory=args.pin_memory,
         max_audio_length_sec=args.max_audio_length_sec,
         min_duration_sec=args.min_duration_sec,
+        max_duration_sec=args.max_duration_sec,
         target_sample_rate=args.target_sample_rate,
     )
 
@@ -275,13 +441,14 @@ def main() -> None:
     bad_paths_by_parquet: dict[str, set[str]] = defaultdict(set)
     bad_counts_by_split: dict[str, int] = {}
     stats_by_split: dict[str, SplitScanStats] = {}
+    latency_points_by_split: dict[str, list[tuple[float, float]]] = {}
 
     for split_name, dataset, parquet_path in split_specs:
         if dataset is None:
             print(f"Skipping {split_name}: parquet not found at {parquet_path}")
             continue
 
-        bad_paths, stats = scan_split_for_failures(
+        bad_paths, stats, batch_points = scan_split_for_failures(
             split_name=split_name,
             dataset=dataset,
             batch_size=args.batch_size,
@@ -290,7 +457,13 @@ def main() -> None:
         )
         bad_counts_by_split[split_name] = len(bad_paths)
         stats_by_split[split_name] = stats
+        latency_points_by_split[split_name] = batch_points
         bad_paths_by_parquet[parquet_path].update(bad_paths)
+
+    plot_batch_latency_vs_audio_time(
+        points_by_split=latency_points_by_split,
+        output_path=args.batch_latency_plot_path,
+    )
 
     print("\nFailure counts by split:")
     for split_name in ["train", "val", "test"]:
