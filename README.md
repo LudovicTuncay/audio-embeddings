@@ -140,3 +140,10 @@ Run verification scripts to ensure components are working:
 uv run tests/verify_rope.py
 uv run tests/verify_custom_rope.py
 ```
+
+## 📜 License
+
+This repository is licensed under the MIT License. See `LICENSE`.
+
+This repository also includes vendored third-party code under Apache-2.0.
+See `THIRD_PARTY_LICENSES.md` and `licenses/APACHE-2.0-LIGHTNING.txt` for details.
