@@ -6,10 +6,17 @@ import lightning as L
 import numpy as np
 import pandas as pd
 import torch
-import torchaudio
 from torch.utils.data import DataLoader, Dataset
 
 from src.data.audio_utils import DatasetResamplerCropper, collate_audio_batch
+
+try:
+    from torchcodec.decoders import AudioDecoder
+except Exception as exc:
+    AudioDecoder = None
+    _TORCHCODEC_IMPORT_ERROR = exc
+else:
+    _TORCHCODEC_IMPORT_ERROR = None
 
 
 class YT1BDataset(Dataset):
@@ -17,8 +24,8 @@ class YT1BDataset(Dataset):
     Dataset for YT-Temporal-1B data using Parquet metadata files.
 
     Args:
-        parquet_path (str): Path to the parquet file containing metadata (must include 'file_path', 'video_id', 'duration_sec').
-            If a 'sample_rate' column exists, it is used to avoid probing files for source sample rate.
+        parquet_path (str): Path to the parquet file containing metadata
+            (must include 'file_path', 'video_id', 'duration_sec').
         min_duration (Optional[float]): Minimum duration in seconds to include a file.
         max_duration (Optional[float]): Maximum duration in seconds to include a file.
         transform (Optional[callable]): Optional transform to apply to the waveform.
@@ -43,6 +50,13 @@ class YT1BDataset(Dataset):
         self.max_length = max_length
         self.target_sample_rate = target_sample_rate
         self.decode_window_sec = decode_window_sec
+
+        if AudioDecoder is None:
+            raise RuntimeError(
+                "YT1BDataset requires torchcodec AudioDecoder for audio decoding. "
+                "Install torchcodec and ensure FFmpeg runtime libraries are available. "
+                "See: https://github.com/pytorch/torchcodec#installing-torchcodec"
+            ) from _TORCHCODEC_IMPORT_ERROR
 
         # --- Metadata Loading ---
         if not os.path.exists(parquet_path):
@@ -86,15 +100,6 @@ class YT1BDataset(Dataset):
         self.ids = df["video_id"].tolist()
         self.paths = df["file_path"].tolist()
         self.durations_sec = df["duration_sec"].tolist()
-        if "sample_rate" in df.columns:
-            sample_rates = pd.to_numeric(df["sample_rate"], errors="coerce").to_numpy(
-                dtype=np.float64
-            )
-            self.source_sample_rates: Optional[list[Optional[int]]] = [
-                int(sr) if np.isfinite(sr) and sr > 0 else None for sr in sample_rates
-            ]
-        else:
-            self.source_sample_rates = None
         self.length = len(self.ids)
 
         # --- Resampler ---
@@ -108,6 +113,16 @@ class YT1BDataset(Dataset):
     def __len__(self) -> int:
         return self.length
 
+    @staticmethod
+    def _coerce_positive_finite(value: Any) -> Optional[float]:
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return None
+        if not np.isfinite(number) or number <= 0.0:
+            return None
+        return number
+
     def __getitem__(self, idx: int) -> Dict[str, Union[torch.Tensor, str, int]]:
         audio_path = self.paths[idx]
         audio_id = self.ids[idx]
@@ -118,41 +133,48 @@ class YT1BDataset(Dataset):
             if decode_window_sec is None and self.max_length is not None:
                 decode_window_sec = self.max_length / self.target_sample_rate
 
+            decoder = AudioDecoder(
+                source=audio_path,
+                sample_rate=self.target_sample_rate,
+                num_channels=1,
+            )
+
             if decode_window_sec is None:
-                waveform, sr = torchaudio.load(audio_path)
+                decoded = decoder.get_all_samples()
             else:
-                duration_sec = float(self.durations_sec[idx])
-                if duration_sec <= 0:
-                    waveform, sr = torchaudio.load(audio_path)
-                else:
-                    source_sr: Optional[int]
-                    if self.source_sample_rates is not None:
-                        source_sr = self.source_sample_rates[idx]
-                    else:
-                        source_sr = None
-
-                    if source_sr is None:
-                        _, source_sr = torchaudio.load(
-                            audio_path, frame_offset=0, num_frames=1
-                        )
-
-                    total_frames = max(1, int(duration_sec * source_sr))
-                    max_decode_frames = max(1, int(decode_window_sec * source_sr))
-                    decode_frames = min(max_decode_frames, total_frames)
-
-                    if total_frames > decode_frames:
-                        max_start = total_frames - decode_frames
-                        frame_offset = int(np.random.randint(0, max_start + 1))
-                    else:
-                        frame_offset = 0
-
-                    waveform, sr = torchaudio.load(
-                        audio_path,
-                        frame_offset=frame_offset,
-                        num_frames=decode_frames,
+                metadata = getattr(decoder, "metadata", None)
+                duration_sec = None
+                if metadata is not None:
+                    duration_sec = self._coerce_positive_finite(
+                        getattr(metadata, "duration_seconds", None)
                     )
+                    if duration_sec is None:
+                        duration_sec = self._coerce_positive_finite(
+                            getattr(metadata, "duration_seconds_from_header", None)
+                        )
+                if duration_sec is None:
+                    duration_sec = self._coerce_positive_finite(self.durations_sec[idx])
+
+                if duration_sec is None:
+                    start_sec = 0.0
+                    end_sec = float(decode_window_sec)
+                elif duration_sec <= decode_window_sec:
+                    start_sec = 0.0
+                    end_sec = duration_sec
+                else:
+                    max_start_sec = duration_sec - decode_window_sec
+                    start_sec = float(np.random.uniform(0.0, max_start_sec))
+                    end_sec = start_sec + float(decode_window_sec)
+
+                decoded = decoder.get_samples_played_in_range(
+                    start_seconds=start_sec,
+                    stop_seconds=end_sec,
+                )
+
+            waveform = decoded.data.to(dtype=torch.float32)
+            sr = self.target_sample_rate
         except Exception as e:
-            print(f"Error loading {audio_path}: {e}")
+            print(f"Error loading with TorchCodec {audio_path}: {e}")
             # Return a dummy silent waveform to prevent crash
             len_samples = (
                 self.max_length if self.max_length else self.target_sample_rate
@@ -164,6 +186,10 @@ class YT1BDataset(Dataset):
                 "error": True,
             }
 
+        if waveform.ndim > 2:
+            waveform = waveform.reshape(waveform.shape[0], -1)
+        if waveform.ndim == 1:
+            waveform = waveform.unsqueeze(0)
         # Mix down to mono if necessary
         if waveform.shape[0] > 1:
             waveform = torch.mean(waveform, dim=0, keepdim=True)
