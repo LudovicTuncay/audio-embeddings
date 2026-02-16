@@ -55,6 +55,17 @@ Override hyperparameters on the command line:
 uv run src/train.py data.batch_size=64 trainer.max_epochs=50
 ```
 
+### UPS WebDataset (Local Shards)
+Train directly from local UPS tar shards on a cluster filesystem:
+```bash
+uv run src/train.py \
+    data=ups_webdataset \
+    trainer=cpu \
+    +trainer.fast_dev_run=True \
+    data.shard_globs='[/mnt/ups/audio/*.tar,/mnt/ups/audio2/*.tar]'
+```
+The loader expects UPS shard samples under the `mp3` key.
+
 ### Configurable Positional Embeddings
 You can switch between different positional embedding strategies easily:
 

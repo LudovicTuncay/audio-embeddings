@@ -1,0 +1,16 @@
+_target_: src.data.ups_webdataset_datamodule.UPSWebDatasetDataModule
+shard_globs: []
+batch_size: 64
+num_workers: 4
+pin_memory: True
+target_sample_rate: 16000
+chunk_sec: 10.0
+collate_mode: pad
+val_num_shards: 32
+test_num_shards: 32
+split_seed: 42
+train_shardshuffle: 200
+train_sampleshuffle: 1000
+eval_sampleshuffle: 0
+persistent_workers: True
+drop_last: True
