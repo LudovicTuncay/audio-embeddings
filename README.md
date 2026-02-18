@@ -30,6 +30,10 @@ This project uses [`uv`](https://github.com/astral-sh/uv) for dependency managem
     ```bash
     uv sync
     ```
+    For development/testing tools (including `pytest`), sync all groups:
+    ```bash
+    uv sync --all-groups
+    ```
 
 4.  **Enable shared git hooks** (runs `uv sync` after merge/checkout/rewrite):
     ```bash
@@ -146,10 +150,33 @@ uv run src/train.py ++model.net.encoder.pos_embed_type=learnable ++model.net.pre
 -   **Metrics**: Add metrics logging in `training_step` or `validation_step` inside `src/models/audio_jepa_module.py`.
 
 ## 🧪 Testing
-Run verification scripts to ensure components are working:
+The project uses a two-tier testing workflow:
+
+1. Fast `pytest` checks by default.
+2. Heavier `integration`/`data` checks on demand.
+
+`pytest` is defined in the `dev` dependency group in `pyproject.toml`, so examples below use `--group dev`.
+
+Run the default fast pytest suite:
+```bash
+uv run --group dev pytest
+```
+
+Run a single pytest file:
+```bash
+uv run --group dev pytest tests/test_audio_utils.py -q
+```
+
+Run slower integration/data checks:
+```bash
+uv run --group dev pytest -m "integration or data"
+```
+
+Keep script-based verifications for manual/component checks:
 ```bash
 uv run tests/verify_rope.py
 uv run tests/verify_custom_rope.py
+uv run tests/verify_data.py
 ```
 
 ## 📜 License

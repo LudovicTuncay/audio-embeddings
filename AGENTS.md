@@ -19,6 +19,7 @@ Follow these repo-specific rules over generic defaults.
 ## 3) Install / Setup Commands
 ```bash
 uv sync
+uv sync --all-groups
 uv run <command>
 uv add <package>
 ```
@@ -42,21 +43,40 @@ srun .venv/bin/python -u -O src/train.py experiment=cluster_jepa_audioset_rope +
 Use the commands below as pragmatic checks:
 ```bash
 uv run pre-commit run --all-files
-uv run pre-commit run ruff --all-files
+uv run pre-commit run ruff-check --all-files
 uv run pre-commit run ruff-format --all-files
 uv run python -m compileall src
 ```
 Ruff is configured via `.pre-commit-config.yaml` and runs both lint fixes and formatting.
 
 ## 6) Test Commands (Including Single Test)
-Primary validation in this repo is script-based verification under `tests/`.
-Run test files directly as native Python files:
+Primary validation is now pytest-based with marker tiers:
+- Default run excludes `slow`, `data`, and `gpu` tests (configured in `pyproject.toml`).
+- Use `integration`/`data` markers for heavier end-to-end checks.
+
+Run default fast tests:
+```bash
+uv run --group dev pytest
+```
+
+Run a single pytest file or test:
+```bash
+uv run --group dev pytest tests/test_audio_utils.py -q
+uv run --group dev pytest tests/test_train.py::test_train_fast_dev_run_cpu -q
+```
+
+Run slower integration/data checks:
+```bash
+uv run --group dev pytest -m "integration or data"
+```
+
+Script-based verifications remain useful for targeted manual checks:
 ```bash
 uv run tests/verify_rope.py
 uv run tests/verify_custom_rope.py
 uv run tests/verify_data.py
 ```
-Useful single-file checks (native execution):
+Additional quick sanity commands:
 ```bash
 uv run src/train.py trainer.fast_dev_run=True
 uv run src/train.py trainer=cpu trainer.fast_dev_run=True
@@ -64,8 +84,8 @@ uv run scripts/verify_shapes.py
 uv run scripts/verify_scheduler.py
 ```
 Notes:
-- `tests/test_*.py` are pytest-style and are not part of the default native-file workflow.
-- Prefer `tests/verify_*.py` and `scripts/verify_*.py` for lightweight checks.
+- Use `uv run --group dev pytest ...` for pytest commands.
+- Keep `tests/verify_*.py` and `scripts/verify_*.py` for lightweight debug/inspection workflows.
 
 ## 7) Repository Architecture Expectations
 - `configs/`: Hydra composition (trainer/data/model/logger/callbacks/experiment).
