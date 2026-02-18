@@ -80,12 +80,12 @@ Additional quick sanity commands:
 ```bash
 uv run src/train.py trainer.fast_dev_run=True
 uv run src/train.py trainer=cpu trainer.fast_dev_run=True
-uv run scripts/verify_shapes.py
-uv run scripts/verify_scheduler.py
+uv run --group dev pytest tests/test_model_forward.py -q
+uv run --group dev pytest tests/test_lr_scheduler.py -q
 ```
 Notes:
 - Use `uv run --group dev pytest ...` for pytest commands.
-- Keep `tests/verify_*.py` and `scripts/verify_*.py` for lightweight debug/inspection workflows.
+- Keep `tests/verify_*.py` for lightweight debug/inspection workflows.
 
 ## 7) Repository Architecture Expectations
 - `configs/`: Hydra composition (trainer/data/model/logger/callbacks/experiment).
