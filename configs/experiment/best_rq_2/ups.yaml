@@ -1,0 +1,36 @@
+# @package _global_
+
+# to execute this experiment run:
+# python train.py experiment=best_rq_2/ups
+
+defaults:
+  - override /data: ups
+  - override /model: best_rq2
+  - override /trainer: gpu
+  - override /logger: wandb
+
+# all parameters below will be merged with parameters from default configurations set above
+# this allows you to overwrite only specified parameters
+
+tags: ["ups", "best-rq-2", "baseline", "cluster GPU"]
+
+trainer:
+  max_steps: 200000
+
+data:
+  shard_globs:
+    - /lustre/fsmisc/dataset/HuggingFace/MLCommons/unsupervised_peoples_speech/audio/*.tar
+    - /lustre/fsmisc/dataset/HuggingFace/MLCommons/unsupervised_peoples_speech/audio2/*.tar
+  batch_size: 256
+  num_workers: ${oc.decode:${oc.env:SLURM_CPUS_PER_TASK}}
+
+logger:
+  wandb:
+    offline: True
+    log_model: False
+
+callbacks:
+  rich_progress_bar: null
+
+  wandb_offline_checkpoint:
+    _target_: src.callbacks.wandb_callbacks.WandbOfflineCheckpointCallback
