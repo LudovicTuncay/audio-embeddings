@@ -1,6 +1,6 @@
 # Audio Embeddings with Lightning & Hydra
 
-This project is a clean, modular, and scalable implementation of audio embedding models using **PyTorch Lightning** and **Hydra**. It is designed to be easily extensible and runnable on local or cluster environments. It is based on the [Audio-JEPA](https://github.com/LudovicTuncay/Audio-JEPA) implementation and therefore implements the Audio-JEPA architecture. Other architecture can and will be added in the future.
+This project is a clean, modular, and scalable implementation of audio embedding models using **PyTorch Lightning** and **Hydra** in a self-supervised learning (SSL) regime. It is originally based on the [lightning-hydra-template](https://github.com/ashleve/lightning-hydra-template), designed to be extensible and runnable on local or cluster environments, and currently supports SSL training for **Audio-JEPA**, **RQA-JEPA**, **BEST-RQ (ViT based)**, and **BEST-RQ-2** architectures, with more coming up.
 
 ## 🎯 Goal
 
@@ -200,3 +200,25 @@ This repository is licensed under the MIT License. See `LICENSE`.
 
 This repository also includes vendored third-party code under Apache-2.0.
 See `THIRD_PARTY_LICENSES.md` and `licenses/APACHE-2.0-LIGHTNING.txt` for details.
+
+## 📚 Citation
+
+### Audio-JEPA
+
+```bibtex
+@inproceedings{tuncay2025audio,
+  title={Audio-JEPA: Joint-Embedding Predictive Architecture for Audio Representation Learning},
+  author={Tuncay, Ludovic and Labb{\'e}, Etienne and Benetos, Emmanouil and Pellegrini, Thomas},
+  booktitle={ICME 2025},
+  year={2025},
+  booktitle={IEEE},
+}
+```
+
+### BEST-RQ (ViT Based)
+
+Citation coming soon.
+
+### BEST-RQ-2
+
+Citation coming soon.
