@@ -42,3 +42,7 @@ markers = [
     "gpu: tests requiring GPU acceleration (excluded by default)",
 ]
 addopts = "-m 'not slow and not data and not gpu'"
+filterwarnings = [
+    "ignore:GPU available but not used.*:UserWarning",
+    "ignore:Starting from v1\\.9\\.0, `tensorboardX` has been removed.*:UserWarning",
+]

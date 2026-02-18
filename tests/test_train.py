@@ -8,10 +8,10 @@ import pytest
 def _tiny_model_overrides() -> list[str]:
     """Overrides to keep fast-dev-run smoke tests lightweight on CPU."""
     return [
-        "model.net.spectrogram.n_fft=64",
-        "model.net.spectrogram.win_length_ms=4",
-        "model.net.spectrogram.hop_length_ms=2",
-        "model.net.spectrogram.n_mels=16",
+        "model.net.spectrogram.n_fft=256",
+        "model.net.spectrogram.win_length_ms=16",
+        "model.net.spectrogram.hop_length_ms=4",
+        "model.net.spectrogram.n_mels=32",
         "model.net.patch_embed.img_size=[16,16]",
         "model.net.patch_embed.patch_size=[4,4]",
         "model.net.patch_embed.embed_dim=32",
