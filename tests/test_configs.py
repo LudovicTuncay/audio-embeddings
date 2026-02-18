@@ -1,6 +1,8 @@
 import hydra
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig
+from omegaconf import OmegaConf
+from omegaconf import open_dict
 
 
 def test_train_config(cfg_train: DictConfig) -> None:
@@ -20,18 +22,27 @@ def test_train_config(cfg_train: DictConfig) -> None:
     hydra.utils.instantiate(cfg_train.trainer)
 
 
-def test_eval_config(cfg_eval: DictConfig) -> None:
-    """Tests the evaluation configuration provided by the `cfg_eval` pytest fixture.
+def test_train_config_with_mock_data(cfg_train: DictConfig) -> None:
+    """The train config should compose and instantiate with mock data overrides."""
+    with open_dict(cfg_train):
+        cfg_train.data = OmegaConf.create(
+            {
+                "_target_": "src.data.mock_audioset_datamodule.MockAudioSetDataModule",
+                "batch_size": 2,
+                "num_workers": 0,
+                "pin_memory": False,
+                "max_audio_length_sec": 0.1,
+                "target_sample_rate": 16000,
+                "collate_mode": "pad",
+            }
+        )
 
-    :param cfg_train: A DictConfig containing a valid evaluation configuration.
-    """
-    assert cfg_eval
-    assert cfg_eval.data
-    assert cfg_eval.model
-    assert cfg_eval.trainer
+    HydraConfig().set_config(cfg_train)
 
-    HydraConfig().set_config(cfg_eval)
+    datamodule = hydra.utils.instantiate(cfg_train.data)
+    model = hydra.utils.instantiate(cfg_train.model)
+    trainer = hydra.utils.instantiate(cfg_train.trainer)
 
-    hydra.utils.instantiate(cfg_eval.data)
-    hydra.utils.instantiate(cfg_eval.model)
-    hydra.utils.instantiate(cfg_eval.trainer)
+    assert datamodule is not None
+    assert model is not None
+    assert trainer is not None

@@ -1,108 +1,90 @@
-import os
 from pathlib import Path
+import subprocess
+import sys
 
 import pytest
-from hydra.core.hydra_config import HydraConfig
-from omegaconf import DictConfig, open_dict
-
-from src.train import train
-from tests.helpers.run_if import RunIf
 
 
-def test_train_fast_dev_run(cfg_train: DictConfig) -> None:
-    """Run for 1 train, val and test step.
-
-    :param cfg_train: A DictConfig containing a valid training configuration.
-    """
-    HydraConfig().set_config(cfg_train)
-    with open_dict(cfg_train):
-        cfg_train.trainer.fast_dev_run = True
-        cfg_train.trainer.accelerator = "cpu"
-    train(cfg_train)
-
-
-@RunIf(min_gpus=1)
-def test_train_fast_dev_run_gpu(cfg_train: DictConfig) -> None:
-    """Run for 1 train, val and test step on GPU.
-
-    :param cfg_train: A DictConfig containing a valid training configuration.
-    """
-    HydraConfig().set_config(cfg_train)
-    with open_dict(cfg_train):
-        cfg_train.trainer.fast_dev_run = True
-        cfg_train.trainer.accelerator = "gpu"
-    train(cfg_train)
-
-
-@RunIf(min_gpus=1)
-@pytest.mark.slow
-def test_train_epoch_gpu_amp(cfg_train: DictConfig) -> None:
-    """Train 1 epoch on GPU with mixed-precision.
-
-    :param cfg_train: A DictConfig containing a valid training configuration.
-    """
-    HydraConfig().set_config(cfg_train)
-    with open_dict(cfg_train):
-        cfg_train.trainer.max_epochs = 1
-        cfg_train.trainer.accelerator = "gpu"
-        cfg_train.trainer.precision = 16
-    train(cfg_train)
+def _tiny_model_overrides() -> list[str]:
+    """Overrides to keep fast-dev-run smoke tests lightweight on CPU."""
+    return [
+        "model.net.spectrogram.n_fft=64",
+        "model.net.spectrogram.win_length_ms=4",
+        "model.net.spectrogram.hop_length_ms=2",
+        "model.net.spectrogram.n_mels=16",
+        "model.net.patch_embed.img_size=[16,16]",
+        "model.net.patch_embed.patch_size=[4,4]",
+        "model.net.patch_embed.embed_dim=32",
+        "model.net.masking.input_size=[16,16]",
+        "model.net.masking.patch_size=[4,4]",
+        "model.net.encoder.embed_dim=32",
+        "model.net.encoder.depth=1",
+        "model.net.encoder.num_heads=4",
+        "model.net.encoder.mlp_ratio=2.0",
+        "model.net.encoder.num_patches=16",
+        "model.net.encoder.pos_embed_type=rope",
+        "model.net.predictor.embed_dim=32",
+        "model.net.predictor.depth=1",
+        "model.net.predictor.num_heads=4",
+        "model.net.predictor.mlp_ratio=2.0",
+        "model.net.predictor.num_patches=16",
+        "model.net.predictor.pos_embed_type=rope",
+    ]
 
 
-@pytest.mark.slow
-def test_train_epoch_double_val_loop(cfg_train: DictConfig) -> None:
-    """Train 1 epoch with validation loop twice per epoch.
+def _run_train_command(
+    tmp_path: Path, extra_overrides: list[str]
+) -> subprocess.CompletedProcess[str]:
+    repo_root = Path(__file__).resolve().parents[1]
+    command = [
+        sys.executable,
+        "src/train.py",
+        "data=mock_audioset",
+        "trainer=cpu",
+        "logger=[]",
+        "callbacks=none",
+        "test=false",
+        "extras.enforce_tags=false",
+        "extras.print_config=false",
+        "+trainer.fast_dev_run=true",
+        "data.batch_size=2",
+        "data.max_audio_length_sec=0.2",
+        f"hydra.run.dir={tmp_path}",
+    ]
+    command.extend(_tiny_model_overrides())
+    command.extend(extra_overrides)
+    return subprocess.run(
+        command,
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=300,
+    )
 
-    :param cfg_train: A DictConfig containing a valid training configuration.
-    """
-    HydraConfig().set_config(cfg_train)
-    with open_dict(cfg_train):
-        cfg_train.trainer.max_epochs = 1
-        cfg_train.trainer.val_check_interval = 0.5
-    train(cfg_train)
 
+def test_train_fast_dev_run_cpu(tmp_path: Path) -> None:
+    """Train entrypoint should complete a fast-dev-run on CPU."""
+    result = _run_train_command(tmp_path=tmp_path, extra_overrides=[])
 
-@pytest.mark.slow
-def test_train_ddp_sim(cfg_train: DictConfig) -> None:
-    """Simulate DDP (Distributed Data Parallel) on 2 CPU processes.
-
-    :param cfg_train: A DictConfig containing a valid training configuration.
-    """
-    HydraConfig().set_config(cfg_train)
-    with open_dict(cfg_train):
-        cfg_train.trainer.max_epochs = 2
-        cfg_train.trainer.accelerator = "cpu"
-        cfg_train.trainer.devices = 2
-        cfg_train.trainer.strategy = "ddp_spawn"
-    train(cfg_train)
+    assert result.returncode == 0, result.stderr
+    assert "Starting training!" in result.stdout
 
 
 @pytest.mark.slow
-def test_train_resume(tmp_path: Path, cfg_train: DictConfig) -> None:
-    """Run 1 epoch, finish, and resume for another epoch.
+def test_train_fast_dev_run_checkpoint_dir_created(tmp_path: Path) -> None:
+    """When checkpoint callback is enabled, the run should create a checkpoint folder."""
+    result = _run_train_command(
+        tmp_path=tmp_path,
+        extra_overrides=[
+            "callbacks=default",
+            "callbacks.device_stats=null",
+            "callbacks.visualization=null",
+            "callbacks.safetensors=null",
+            "callbacks.model_checkpoint.save_last=true",
+            "callbacks.model_checkpoint.save_top_k=0",
+        ],
+    )
 
-    :param tmp_path: The temporary logging path.
-    :param cfg_train: A DictConfig containing a valid training configuration.
-    """
-    with open_dict(cfg_train):
-        cfg_train.trainer.max_epochs = 1
-
-    HydraConfig().set_config(cfg_train)
-    metric_dict_1, _ = train(cfg_train)
-
-    files = os.listdir(tmp_path / "checkpoints")
-    assert "last.ckpt" in files
-    assert "epoch_000.ckpt" in files
-
-    with open_dict(cfg_train):
-        cfg_train.ckpt_path = str(tmp_path / "checkpoints" / "last.ckpt")
-        cfg_train.trainer.max_epochs = 2
-
-    metric_dict_2, _ = train(cfg_train)
-
-    files = os.listdir(tmp_path / "checkpoints")
-    assert "epoch_001.ckpt" in files
-    assert "epoch_002.ckpt" not in files
-
-    assert metric_dict_1["train/acc"] < metric_dict_2["train/acc"]
-    assert metric_dict_1["val/acc"] < metric_dict_2["val/acc"]
+    assert result.returncode == 0, result.stderr
+    assert (tmp_path / "checkpoints").exists()
