@@ -172,6 +172,21 @@ Run slower integration/data checks:
 uv run --group dev pytest -m "integration or data"
 ```
 
+### macOS TorchCodec + FFmpeg note
+`torchcodec` is used by `integration`/`data` tests and by dataset decoding code paths (for example `YT1B`/`UPS` loaders). On macOS, these workflows may fail when FFmpeg shared libraries installed via Homebrew are not found at runtime.
+
+Run with a fallback library path:
+
+Fish:
+```fish
+env DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib:/opt/homebrew/opt/ffmpeg/lib uv run --group dev pytest -m "integration or data"
+```
+
+Bash/Zsh:
+```bash
+DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib:/opt/homebrew/opt/ffmpeg/lib uv run --group dev pytest -m "integration or data"
+```
+
 Keep script-based verifications for manual/component checks:
 ```bash
 uv run tests/verify_rope.py
