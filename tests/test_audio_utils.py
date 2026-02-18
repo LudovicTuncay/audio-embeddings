@@ -2,8 +2,10 @@ import numpy as np
 import pytest
 import torch
 
+from src.data.audioset_datamodule import AudioSetDataModule
 from src.data.audio_utils import DatasetResamplerCropper
 from src.data.audio_utils import collate_audio_batch
+from src.models.audio_jepa_module import AudioJEPAModule
 
 
 def test_collate_audio_batch_pad_mode() -> None:
@@ -81,3 +83,84 @@ def test_dataset_resampler_cropper_reuses_resampler_cache() -> None:
 
     assert 32000 in cropper.resamplers
     assert len(cropper.resamplers) == 1
+
+
+def test_audioset_collate_variable_length_and_model_step() -> None:
+    torch.manual_seed(0)
+    batch = [
+        {
+            "waveform": torch.randn(1, 320),
+            "target": torch.zeros(527),
+            "audio_name": "a",
+            "index": 0,
+        },
+        {
+            "waveform": torch.randn(1, 520),
+            "target": torch.zeros(527),
+            "audio_name": "b",
+            "index": 1,
+        },
+        {
+            "waveform": torch.randn(1, 410),
+            "target": torch.zeros(527),
+            "audio_name": "c",
+            "index": 2,
+        },
+    ]
+
+    collated = AudioSetDataModule.collate_fn(batch, mode="pad")
+    assert collated["waveform"].shape == (3, 1, 520)
+
+    module = AudioJEPAModule(
+        optimizer=torch.optim.AdamW,
+        net={
+            "spectrogram": {
+                "sample_rate": 16000,
+                "n_fft": 256,
+                "win_length": 256,
+                "hop_length": 64,
+                "n_mels": 32,
+                "f_min": 0,
+                "f_max": 8000,
+            },
+            "patch_embed": {
+                "img_size": (16, 16),
+                "patch_size": (4, 4),
+                "in_chans": 1,
+                "embed_dim": 32,
+            },
+            "masking": {
+                "input_size": (16, 16),
+                "patch_size": (4, 4),
+                "mask_ratio": (0.5, 0.5),
+            },
+            "encoder": {
+                "embed_dim": 32,
+                "depth": 1,
+                "num_heads": 4,
+                "mlp_ratio": 2.0,
+                "qkv_bias": True,
+                "num_patches": 16,
+                "img_size": (16, 16),
+                "patch_size": (4, 4),
+                "pos_embed_type": "rope",
+            },
+            "predictor": {
+                "embed_dim": 32,
+                "depth": 1,
+                "num_heads": 4,
+                "mlp_ratio": 2.0,
+                "qkv_bias": True,
+                "num_patches": 16,
+                "img_size": (16, 16),
+                "patch_size": (4, 4),
+                "pos_embed_type": "rope",
+            },
+        },
+        spectrogram_adjustment_mode="pad",
+    )
+    module.log = lambda *args, **kwargs: None
+    loss = module.training_step({"waveform": collated["waveform"]}, batch_idx=0)
+
+    assert loss.ndim == 0
+    assert torch.isfinite(loss)
