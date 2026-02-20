@@ -303,7 +303,9 @@ def main() -> None:
     print(f"Total audio duration: {total_hours:,.2f} h")
     print()
     print(f"Estimated WAV bytes (sum of .wav files): {format_bytes(wav_total_bytes)}")
-    print(f"Estimated WDS TAR bytes (wav-only):      {format_bytes(wds_tar_total_bytes)}")
+    print(
+        f"Estimated WDS TAR bytes (wav-only):      {format_bytes(wds_tar_total_bytes)}"
+    )
     print(
         f"Average WAV per sample:                  {format_bytes(wav_total_bytes / n_valid)}"
     )

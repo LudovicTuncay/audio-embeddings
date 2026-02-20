@@ -66,7 +66,7 @@ uv run src/train.py \
     data=ups_webdataset \
     trainer=cpu \
     +trainer.fast_dev_run=True \
-    data.shard_globs='[/mnt/ups/audio/*.tar,/mnt/ups/audio2/*.tar]'
+    data.shard_globs='[${oc.env:UPS_DATA_ROOT,/path/to/ups}/audio/*.tar,${oc.env:UPS_DATA_ROOT,/path/to/ups}/audio2/*.tar]'
 ```
 The loader expects UPS shard samples under the `mp3` key.
 
@@ -77,7 +77,7 @@ uv run src/train.py \
     data=peoples_speech \
     trainer=cpu \
     +trainer.fast_dev_run=True \
-    data.data_root='${oc.env:DSDIR,/lustre/fsmisc/dataset}/HuggingFace/MLCommons/peoples_speech' \
+    data.data_root='${oc.env:DSDIR,/path/to/datasets}/HuggingFace/MLCommons/peoples_speech' \
     data.cache_dir='${oc.env:SCRATCH,/tmp}'
 ```
 Run the cluster preset:
@@ -209,6 +209,27 @@ uv run tests/verify_rope.py
 uv run tests/verify_custom_rope.py
 uv run tests/verify_data.py
 ```
+
+## 🔐 Private-First Development, Public Mirror Releases
+
+This project supports a private-first workflow:
+
+- `origin` is the private canonical repo.
+- `public` is the public mirror.
+- Public updates are release-gated from `release/<version>` branches.
+
+The publication pipeline uses deterministic sanitization rules in
+`.public-sanitize.yml` and release tooling in:
+
+- `scripts/sanitize_for_public.py`
+- `scripts/publish_public.sh`
+- `docs/RELEASING_PUBLIC.md`
+
+### Contributor flow (public-first triage)
+
+- Public Issues/PRs stay enabled.
+- Accepted public PRs are ported into private `master`.
+- Ported changes are included in the next public release publish.
 
 ## 📜 License
 

@@ -1,6 +1,6 @@
 _target_: src.data.peoples_speech_datamodule.PeoplesSpeechDataModule
 
-data_root: ${oc.env:DSDIR,/lustre/fsmisc/dataset}/HuggingFace/MLCommons/peoples_speech
+data_root: ${oc.env:DSDIR,${oc.env:DATA_ROOT,/path/to/datasets}}/HuggingFace/MLCommons/peoples_speech
 subset: clean
 cache_dir: ${oc.env:SCRATCH,/tmp}
 

@@ -19,8 +19,8 @@ trainer:
 
 data:
   shard_globs:
-    - /lustre/fsmisc/dataset/HuggingFace/MLCommons/unsupervised_peoples_speech/audio/[0-9][0-9][0-9][0-9][0-9][0-9].tar
-    - /lustre/fsmisc/dataset/HuggingFace/MLCommons/unsupervised_peoples_speech/audio2/[0-9][0-9][0-9][0-9][0-9][0-9].tar
+    - ${oc.env:DATA_ROOT,/path/to/datasets}/HuggingFace/MLCommons/unsupervised_peoples_speech/audio/[0-9][0-9][0-9][0-9][0-9][0-9].tar
+    - ${oc.env:DATA_ROOT,/path/to/datasets}/HuggingFace/MLCommons/unsupervised_peoples_speech/audio2/[0-9][0-9][0-9][0-9][0-9][0-9].tar
   batch_size: 256
   num_workers: ${oc.decode:${oc.env:SLURM_CPUS_PER_TASK}}
 

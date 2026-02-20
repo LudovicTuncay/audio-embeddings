@@ -1,0 +1,70 @@
+version: 1
+
+# Files and directories that are operationally private and should not be
+# propagated to the public mirror.
+remove_paths:
+  - slurm_scripts/
+
+# Deterministic text substitutions applied before publishing to the public repo.
+replacements:
+  - pattern: /lustre/fsmisc/dataset
+    replacement: ${oc.env:DATA_ROOT,/path/to/datasets}
+    path_globs:
+      - README.md
+      - docs/**/*.md
+      - configs/**/*.yaml
+      - configs/**/*.yml
+  - pattern: /mnt/ups
+    replacement: ${oc.env:UPS_DATA_ROOT,/path/to/ups}
+    path_globs:
+      - README.md
+      - docs/**/*.md
+      - configs/**/*.yaml
+      - configs/**/*.yml
+  - pattern: /lustre/fswork/projects/rech/ojz/umz91bs/audio-embeddings/data/YT-Temporal-1B/
+    replacement: ${oc.env:YT1B_ROOT,/path/to/yt1b}/
+    path_globs:
+      - scripts/clean_yt1b_corrupted_audio.py
+
+# Any remaining match after sanitization fails the publish pipeline.
+blocked_patterns:
+  - pattern: /lustre/
+    path_globs:
+      - README.md
+      - docs/**/*.md
+      - configs/**/*.yaml
+      - configs/**/*.yml
+      - src/**/*.py
+      - pyproject.toml
+  - pattern: /mnt/
+    path_globs:
+      - README.md
+      - docs/**/*.md
+      - configs/**/*.yaml
+      - configs/**/*.yml
+      - src/**/*.py
+      - pyproject.toml
+  - pattern: (?i)(api[_-]?key|secret|password)\s*[:=]\s*['\"][^'\"]+['\"]
+    path_globs:
+      - README.md
+      - docs/**/*.md
+      - configs/**/*.yaml
+      - configs/**/*.yml
+      - src/**/*.py
+      - scripts/**/*.py
+      - pyproject.toml
+  - pattern: -----BEGIN [A-Z ]*PRIVATE KEY-----
+    path_globs:
+      - "**/*"
+  - pattern: ghp_[A-Za-z0-9]{36}
+    path_globs:
+      - "**/*"
+  - pattern: hf_[A-Za-z0-9]{24,}
+    path_globs:
+      - "**/*"
+  - pattern: sk-[A-Za-z0-9]{20,}
+    path_globs:
+      - "**/*"
+  - pattern: https?://[^/\s:@]+:[^@\s]+@
+    path_globs:
+      - "**/*"
