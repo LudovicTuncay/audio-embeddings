@@ -1,0 +1,27 @@
+_target_: src.data.peoples_speech_datamodule.PeoplesSpeechDataModule
+
+data_root: ${oc.env:DSDIR,/lustre/fsmisc/dataset}/HuggingFace/MLCommons/peoples_speech
+subset: clean
+cache_dir: ${oc.env:SCRATCH,/tmp}
+
+split_file_patterns:
+  train: [train*.parquet]
+  validation: [valid*.parquet, validation*.parquet]
+  test: [test*.parquet]
+
+audio_column: audio
+id_column: id
+text_column: text
+duration_column_candidates: [duration_ms, duration_sec, duration]
+min_duration_sec: 10.0
+max_duration_sec: 30.0
+max_audio_length_sec: 10.0
+target_sample_rate: 16000
+decode_error_policy: skip
+
+batch_size: 64
+num_workers: 4
+pin_memory: True
+persistent_workers: True
+prefetch_factor: 2
+collate_mode: pad

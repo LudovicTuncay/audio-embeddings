@@ -70,6 +70,22 @@ uv run src/train.py \
 ```
 The loader expects UPS shard samples under the `mp3` key.
 
+### PeoplesSpeech (HF Parquet on Cluster)
+Train from local PeoplesSpeech parquet splits (`train*.parquet`, `valid*.parquet`, `test*.parquet`) under a subset folder (default `clean`):
+```bash
+uv run src/train.py \
+    data=peoples_speech \
+    trainer=cpu \
+    +trainer.fast_dev_run=True \
+    data.data_root='${oc.env:DSDIR,/lustre/fsmisc/dataset}/HuggingFace/MLCommons/peoples_speech' \
+    data.cache_dir='${oc.env:SCRATCH,/tmp}'
+```
+Run the cluster preset:
+```bash
+uv run src/train.py experiment=best_rq_2/peoples_speech
+```
+If your local layout differs, override `data.split_file_patterns.*` and/or column names from CLI/config.
+
 ### Configurable Positional Embeddings
 You can switch between different positional embedding strategies easily:
 
